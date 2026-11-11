@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "ExternalAI — голосовой ИИ-ассистент в стиле J.A.R.V.I.S. на русском языке",
   "main": "src/main/main.js",
-  "author": "FluffyBarbara",
+  "author": {
+    "name": "FluffyBarbara",
+    "email": "FluffyBarbara@users.noreply.github.com"
+  },
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -93,7 +96,9 @@
       "category": "Utility",
       "icon": "build/icon.png",
       "artifactName": "ExternalAI-${version}-${arch}.${ext}",
-      "synopsis": "Голосовой ИИ-ассистент на русском языке"
+      "synopsis": "Голосовой ИИ-ассистент на русском языке",
+      "maintainer": "FluffyBarbara <FluffyBarbara@users.noreply.github.com>",
+      "syncDesktopName": true
     },
     "deb": {
       "depends": [
@@ -115,5 +120,6 @@
         "NSMicrophoneUsageDescription": "ExternalAI слушает голосовые команды."
       }
     }
-  }
+  },
+  "desktopName": "externalai.desktop"
 }
