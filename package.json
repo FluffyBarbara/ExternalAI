@@ -1,0 +1,119 @@
+{
+  "name": "externalai",
+  "productName": "ExternalAI",
+  "version": "1.0.0",
+  "description": "ExternalAI — голосовой ИИ-ассистент в стиле J.A.R.V.I.S. на русском языке",
+  "main": "src/main/main.js",
+  "author": "FluffyBarbara",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "check": "node scripts/check.js",
+    "test": "node scripts/test-commands.mjs",
+    "icon": "node scripts/make-icon.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "adm-zip": "^0.6.1",
+    "electron-updater": "^6.8.11",
+    "tar": "^7.5.22",
+    "vosk-browser": "^0.0.8"
+  },
+  "devDependencies": {
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FluffyBarbara/ExternalAI.git"
+  },
+  "homepage": "https://github.com/FluffyBarbara/ExternalAI",
+  "build": {
+    "appId": "com.fluffybarbara.externalai",
+    "productName": "ExternalAI",
+    "copyright": "© FluffyBarbara",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json",
+      "!**/*.map"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "FluffyBarbara",
+        "repo": "ExternalAI",
+        "releaseType": "draft"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "ExternalAI-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "ExternalAI",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "ru_RU"
+      ],
+      "language": "1049",
+      "multiLanguageInstaller": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "artifactName": "ExternalAI-${version}-${arch}.${ext}",
+      "synopsis": "Голосовой ИИ-ассистент на русском языке"
+    },
+    "deb": {
+      "depends": [
+        "libnotify4",
+        "libxtst6",
+        "libnss3",
+        "pulseaudio-utils | pipewire-pulse"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "artifactName": "ExternalAI-${version}-${arch}.${ext}",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "ExternalAI слушает голосовые команды."
+      }
+    }
+  }
+}

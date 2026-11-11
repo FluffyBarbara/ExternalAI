@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' https: blob: data:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; media-src 'self' blob: data:; font-src 'self' data:" />
+  <title>ExternalAI</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-a"></div>
+    <div class="bg-glow bg-glow-b"></div>
+    <canvas id="particles"></canvas>
+    <div class="bg-scan"></div>
+  </div>
+
+  <!-- ─────────── Заголовок окна ─────────── -->
+  <header class="titlebar">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <radialGradient id="lg" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#e0fbff"/><stop offset=".45" stop-color="#22d3ee"/><stop offset="1" stop-color="#0e7490" stop-opacity="0"/></radialGradient>
+        </defs>
+        <circle cx="32" cy="32" r="29" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" opacity=".7"/>
+        <circle cx="32" cy="32" r="21" fill="none" stroke="currentColor" stroke-width="3"/>
+        <circle cx="32" cy="32" r="11" fill="url(#lg)"/>
+      </svg>
+      <span class="brand-name">External<b>AI</b></span>
+      <span class="brand-ver" id="appVersion">v—</span>
+    </div>
+
+    <div class="status-row">
+      <span class="pill" id="pillMic" title="Микрофон"><i class="dot"></i><span>Микрофон</span></span>
+      <span class="pill" id="pillModel" title="Распознавание речи"><i class="dot"></i><span>Речь</span></span>
+      <span class="pill" id="pillAi" title="Искусственный интеллект"><i class="dot"></i><span>ИИ</span></span>
+      <button class="pill pill-update hidden" id="pillUpdate" title="Обновление"><i class="dot"></i><span>Обновление</span></button>
+    </div>
+
+    <div class="win-actions">
+      <button class="icon-btn" id="btnHelp" title="Команды (F1)"><svg viewBox="0 0 24 24"><path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20Zm0-2a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-1-5h2v2h-2v-2Zm2-1.6V14h-2v-1.5a1 1 0 0 1 1-1 1.5 1.5 0 1 0-1.47-1.8l-1.96-.39A3.5 3.5 0 1 1 13 13.4Z"/></svg></button>
+      <button class="icon-btn" id="btnSettings" title="Настройки (Ctrl+,)"><svg viewBox="0 0 24 24"><path d="M12 1l9.5 5.5v11L12 23l-9.5-5.5v-11L12 1Zm0 2.3L4.5 7.65v8.7L12 20.7l7.5-4.35v-8.7L12 3.3ZM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg></button>
+      <span class="sep"></span>
+      <button class="win-btn" id="winMin" title="Свернуть"><svg viewBox="0 0 12 12"><path d="M1 6h10" /></svg></button>
+      <button class="win-btn" id="winMax" title="Развернуть"><svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1" /></svg></button>
+      <button class="win-btn win-close" id="winClose" title="Закрыть"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" /></svg></button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ─────────── Левая панель ─────────── -->
+    <aside class="panel panel-left">
+      <section class="card card-clock hud">
+        <div class="clock" id="clock">00:00<span class="clock-sec">:00</span></div>
+        <div class="date" id="date">—</div>
+        <div class="greeting" id="greeting">Системы активны</div>
+      </section>
+
+      <section class="card hud">
+        <header class="card-head"><span>Система</span><span class="mono dim" id="sysHost">—</span></header>
+        <div class="meter">
+          <div class="meter-row"><span>Процессор</span><b id="cpuVal">0%</b></div>
+          <div class="bar"><i id="cpuBar"></i></div>
+          <canvas class="spark" id="cpuSpark" height="34"></canvas>
+        </div>
+        <div class="meter">
+          <div class="meter-row"><span>Память</span><b id="memVal">0%</b></div>
+          <div class="bar bar-violet"><i id="memBar"></i></div>
+          <div class="meter-sub mono dim" id="memSub">—</div>
+        </div>
+        <div class="kv-grid">
+          <div><span>Батарея</span><b id="batVal">—</b></div>
+          <div><span>Аптайм</span><b id="upVal">—</b></div>
+        </div>
+      </section>
+
+      <section class="card hud card-weather" id="weatherCard">
+        <header class="card-head"><span>Погода</span><span class="mono dim" id="weatherCity">—</span></header>
+        <div class="weather-main">
+          <div class="weather-icon" id="weatherIcon">☁</div>
+          <div>
+            <div class="weather-temp" id="weatherTemp">—°</div>
+            <div class="weather-desc" id="weatherDesc">загрузка…</div>
+          </div>
+        </div>
+        <div class="weather-days" id="weatherDays"></div>
+      </section>
+
+      <section class="card hud">
+        <header class="card-head"><span>Таймеры</span><span class="mono dim" id="timerCount">0</span></header>
+        <ul class="timers" id="timers"><li class="empty">Скажите: «поставь таймер на 5 минут»</li></ul>
+      </section>
+
+      <section class="card hud">
+        <header class="card-head"><span>Заметки</span><button class="link-btn" id="notesClear">очистить</button></header>
+        <ul class="notes" id="notes"><li class="empty">Скажите: «запомни, что…»</li></ul>
+      </section>
+    </aside>
+
+    <!-- ─────────── Центр ─────────── -->
+    <section class="core">
+      <div class="core-frame">
+        <canvas id="reactor"></canvas>
+        <div class="core-center">
+          <div class="core-label" id="coreLabel">ИНИЦИАЛИЗАЦИЯ</div>
+          <div class="core-sub" id="coreSub">запуск систем</div>
+        </div>
+      </div>
+
+      <div class="transcript" id="transcript"><span class="placeholder">Скажите «Джарвис» и команду</span></div>
+
+      <div class="controls">
+        <button class="ctrl-btn" id="btnMute" title="Отключить/включить прослушивание">
+          <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-5 5.9V21h-2v-3.1A6 6 0 0 1 6 12h2a4 4 0 0 0 8 0h2Z"/></svg>
+          <span>Слух</span>
+        </button>
+        <button class="mic-btn" id="btnTalk" title="Говорить (Ctrl+Shift+Space)">
+          <span class="mic-ring"></span>
+          <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-5 5.9V21h-2v-3.1A6 6 0 0 1 6 12h2a4 4 0 0 0 8 0h2Z"/></svg>
+        </button>
+        <button class="ctrl-btn" id="btnStop" title="Остановить речь (Esc)">
+          <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          <span>Стоп</span>
+        </button>
+      </div>
+      <div class="hint" id="hint">Ключевое слово — <b>«Джарвис»</b> · кнопка — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd></div>
+    </section>
+
+    <!-- ─────────── Правая панель ─────────── -->
+    <aside class="panel panel-right">
+      <section class="card hud card-log">
+        <header class="card-head"><span>Журнал</span><button class="link-btn" id="logClear">новый диалог</button></header>
+        <div class="log" id="log"></div>
+        <form class="composer" id="composer" autocomplete="off">
+          <input id="composerInput" placeholder="Напишите команду…" spellcheck="false" />
+          <button type="submit" class="send-btn" title="Отправить"><svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5v6.6L15 12 3 13.9v6.6Z"/></svg></button>
+        </form>
+        <div class="chips" id="chips"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ─────────── Первый запуск: загрузка модели ─────────── -->
+  <div class="overlay hidden" id="onboarding">
+    <div class="modal modal-onboard hud">
+      <div class="onboard-logo"><canvas id="onboardReactor" width="160" height="160"></canvas></div>
+      <h2>Добро пожаловать в ExternalAI</h2>
+      <p class="muted">Для распознавания русской речи без интернета нужна голосовая модель (~45 МБ). Она скачается один раз.</p>
+      <div class="progress"><i id="onboardBar"></i></div>
+      <div class="mono dim" id="onboardStatus">Ожидание…</div>
+      <div class="modal-actions">
+        <button class="btn" id="onboardImport">Выбрать файл модели…</button>
+        <button class="btn btn-primary" id="onboardRetry">Скачать</button>
+        <button class="btn btn-ghost" id="onboardSkip">Пропустить (только текст)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── Подтверждение ─────────── -->
+  <div class="overlay hidden" id="confirm">
+    <div class="modal modal-confirm hud">
+      <div class="confirm-icon">!</div>
+      <h3 id="confirmTitle">Подтвердите</h3>
+      <p id="confirmText"></p>
+      <pre class="confirm-details" id="confirmDetails"></pre>
+      <div class="mono dim small">Скажите «да» или «нет»</div>
+      <div class="modal-actions">
+        <button class="btn" id="confirmNo">Отмена</button>
+        <button class="btn btn-danger" id="confirmYes">Выполнить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── Справка ─────────── -->
+  <div class="overlay hidden" id="help">
+    <div class="modal modal-wide hud">
+      <header class="modal-head">
+        <h2>Что я умею</h2>
+        <button class="icon-btn close-modal" data-close="help"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+      </header>
+      <p class="muted">Сначала скажите ключевое слово («Джарвис»), затем команду — можно одной фразой: «Джарвис, открой ютуб». Всё, чего нет в списке, выполнит ИИ, если он подключён.</p>
+      <div class="help-grid" id="helpGrid"></div>
+    </div>
+  </div>
+
+  <!-- ─────────── Настройки ─────────── -->
+  <div class="overlay hidden" id="settings">
+    <div class="modal modal-settings hud">
+      <header class="modal-head">
+        <h2>Настройки</h2>
+        <button class="icon-btn close-modal" data-close="settings"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
+      </header>
+      <div class="settings-body">
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-tab="voice">Голос</button>
+          <button class="tab" data-tab="ai">Искусственный интеллект</button>
+          <button class="tab" data-tab="system">Система</button>
+          <button class="tab" data-tab="updates">Обновления</button>
+          <button class="tab" data-tab="about">О программе</button>
+        </nav>
+
+        <div class="tab-panels">
+          <section class="tab-panel active" data-panel="voice">
+            <h4>Распознавание</h4>
+            <label class="row"><span>Ключевое слово</span><input type="checkbox" class="switch" data-key="voice.wakeWordEnabled" /></label>
+            <label class="row col"><span>Ключевые слова (через запятую)</span><input type="text" data-key="voice.wakeWords" data-type="list" /></label>
+            <p class="note">Офлайн-модель может не знать редкие слова. Если «Джарвис» распознаётся плохо, используйте «компьютер» или своё слово.</p>
+            <label class="row"><span>Слушать без ключевого слова после ответа, сек</span><input type="number" min="0" max="60" data-key="voice.followUpSeconds" data-type="number" /></label>
+            <label class="row"><span>Звуковые сигналы</span><input type="checkbox" class="switch" data-key="voice.sounds" /></label>
+            <div class="row"><span>Модель речи</span><span class="row-actions"><span class="mono dim" id="modelState">—</span><button class="btn btn-sm" id="modelImport">Импорт…</button><button class="btn btn-sm" id="modelRedownload">Перекачать</button></span></div>
+
+            <h4>Голос ассистента</h4>
+            <label class="row"><span>Озвучивать ответы</span><input type="checkbox" class="switch" data-key="voice.ttsEnabled" /></label>
+            <label class="row"><span>Голос</span><select id="voiceSelect" data-key="voice.ttsVoice"></select></label>
+            <label class="row"><span>Скорость</span><input type="range" min="0.6" max="1.6" step="0.05" data-key="voice.ttsRate" data-type="number" /></label>
+            <label class="row"><span>Тон</span><input type="range" min="0.5" max="1.5" step="0.05" data-key="voice.ttsPitch" data-type="number" /></label>
+            <label class="row"><span>Громкость</span><input type="range" min="0" max="1" step="0.05" data-key="voice.ttsVolume" data-type="number" /></label>
+            <div class="row"><span></span><button class="btn btn-sm" id="voiceTest">Проверить голос</button></div>
+            <p class="note">Нет русского голоса? В Windows: Параметры → Время и язык → Речь → Добавить голоса → Русский.</p>
+          </section>
+
+          <section class="tab-panel" data-panel="ai">
+            <h4>Claude</h4>
+            <p class="note">ИИ выполняет всё, чего нет в списке встроенных команд: работа с файлами, вопросы, поиск в интернете, сложные действия на компьютере. Ключ берётся на <a href="#" data-href="https://platform.claude.com/settings/keys">platform.claude.com</a>.</p>
+            <label class="row col"><span>API-ключ</span><span class="row-actions grow"><input type="password" data-key="ai.apiKey" placeholder="sk-ant-…" /><button class="btn btn-sm" id="aiTest">Проверить</button></span></label>
+            <div class="mono dim small" id="aiTestResult"></div>
+            <label class="row"><span>Модель</span>
+              <select data-key="ai.model">
+                <option value="claude-opus-5-5">Claude Opus 5.5 — умная (по умолчанию)</option>
+                <option value="claude-sonnet-5-5">Claude Sonnet 5.5 — быстрая</option>
+                <option value="claude-haiku-5-5">Claude Haiku 5.5 — самая быстрая и дешёвая</option>
+                <option value="claude-fable-5-2">Claude Fable 5.2 — самая мощная</option>
+              </select>
+            </label>
+            <label class="row"><span>Глубина размышлений</span>
+              <select data-key="ai.effort">
+                <option value="low">Низкая — быстрые ответы</option>
+                <option value="medium">Средняя</option>
+                <option value="high">Высокая — сложные задачи</option>
+              </select>
+            </label>
+            <label class="row"><span>Поиск в интернете</span><input type="checkbox" class="switch" data-key="ai.webSearch" /></label>
+            <label class="row"><span>Запасная модель при отказе</span><input type="checkbox" class="switch" data-key="ai.fallbacks" /></label>
+            <label class="row"><span>Выполнение команд системы</span>
+              <select data-key="ai.shellPolicy">
+                <option value="ask">Спрашивать подтверждение</option>
+                <option value="always">Выполнять без вопросов</option>
+                <option value="never">Запретить</option>
+              </select>
+            </label>
+            <label class="row col"><span>Адрес API (необязательно, для прокси)</span><input type="text" data-key="ai.baseURL" placeholder="https://api.anthropic.com" /></label>
+            <label class="row col"><span>Ваше имя</span><input type="text" data-key="userName" placeholder="Как к вам обращаться" /></label>
+            <label class="row col"><span>Дополнительные указания для ИИ</span><textarea rows="3" data-key="ai.persona" placeholder="Например: отвечай с юмором, называй меня «босс»"></textarea></label>
+          </section>
+
+          <section class="tab-panel" data-panel="system">
+            <h4>Запуск</h4>
+            <label class="row"><span>Запускать вместе с системой</span><input type="checkbox" class="switch" data-key="system.autostart" /></label>
+            <label class="row"><span>Запускать свёрнутым в трей</span><input type="checkbox" class="switch" data-key="system.startHidden" /></label>
+            <label class="row"><span>Кнопка «закрыть» сворачивает в трей</span><input type="checkbox" class="switch" data-key="system.minimizeToTray" /></label>
+            <h4>Управление</h4>
+            <label class="row col"><span>Глобальная горячая клавиша</span><input type="text" data-key="system.hotkey" placeholder="CommandOrControl+Shift+Space" /></label>
+            <label class="row col"><span>Город для погоды</span><input type="text" data-key="system.city" /></label>
+            <h4>Интерфейс</h4>
+            <label class="row"><span>Цвет подсветки</span><input type="color" data-key="ui.accent" /></label>
+            <label class="row"><span>Меньше анимаций</span><input type="checkbox" class="switch" data-key="ui.reduceMotion" /></label>
+          </section>
+
+          <section class="tab-panel" data-panel="updates">
+            <h4>Автообновление</h4>
+            <div class="update-box">
+              <div class="update-status" id="updStatus">—</div>
+              <div class="progress"><i id="updBar"></i></div>
+              <pre class="update-notes" id="updNotes"></pre>
+              <div class="row-actions">
+                <button class="btn" id="updCheck">Проверить сейчас</button>
+                <button class="btn btn-primary hidden" id="updDownload">Скачать</button>
+                <button class="btn btn-primary hidden" id="updInstall">Перезапустить и обновить</button>
+              </div>
+            </div>
+            <label class="row"><span>Проверять обновления автоматически</span><input type="checkbox" class="switch" data-key="updates.autoCheck" /></label>
+            <label class="row"><span>Скачивать обновления сразу</span><input type="checkbox" class="switch" data-key="updates.autoDownload" /></label>
+            <label class="row"><span>Получать бета-версии</span><input type="checkbox" class="switch" data-key="updates.allowPrerelease" /></label>
+          </section>
+
+          <section class="tab-panel" data-panel="about">
+            <div class="about">
+              <canvas id="aboutReactor" width="140" height="140"></canvas>
+              <h2>External<b>AI</b></h2>
+              <div class="mono dim" id="aboutVersion">—</div>
+              <p class="muted">Голосовой ассистент на русском языке: офлайн-распознавание речи (Vosk), локальные команды и ИИ Claude для всего остального.</p>
+              <div class="row-actions center">
+                <button class="btn" data-href="https://github.com/FluffyBarbara/ExternalAI">GitHub</button>
+                <button class="btn" data-href="https://github.com/FluffyBarbara/ExternalAI/releases">Релизы</button>
+                <button class="btn" id="openUserData">Папка данных</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="shared/text.js"></script>
+  <script src="vendor/vosk.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
