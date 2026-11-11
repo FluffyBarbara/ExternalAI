@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('ext', {
     ask: (text) => ipcRenderer.invoke('ai:ask', text),
     reset: () => ipcRenderer.invoke('ai:reset'),
     test: () => ipcRenderer.invoke('ai:test'),
+    runTool: (name, input) => ipcRenderer.invoke('ai:runTool', name, input),
     onEvent: (fn) => on('ai:event', fn),
   },
   model: {

@@ -53,7 +53,7 @@ async function openUrl(url) {
   if (!target) return fail('Не указан адрес');
   if (!/^[a-z][a-z0-9+.-]*:/i.test(target)) target = 'https://' + target;
   const scheme = target.split(':')[0].toLowerCase();
-  const allowed = ['http', 'https', 'mailto', 'tg', 'steam', 'discord', 'spotify', 'ms-settings', 'zoommtg', 'vk'];
+  const allowed = ['http', 'https', 'mailto', 'tg', 'steam', 'discord', 'spotify', 'ms-settings', 'zoommtg', 'vk', 'search-ms', 'ms-windows-store', 'yandexmusic'];
   if (!allowed.includes(scheme)) return fail('Этот тип ссылок запрещён: ' + scheme);
   await shell.openExternal(target);
   return ok('Открываю ' + target.replace(/^https?:\/\//, '').replace(/\/$/, ''));
@@ -63,13 +63,16 @@ const FOLDERS = {
   downloads: 'downloads', загрузки: 'downloads', документы: 'documents', documents: 'documents',
   desktop: 'desktop', 'рабочий стол': 'desktop', изображения: 'pictures', картинки: 'pictures',
   фото: 'pictures', pictures: 'pictures', музыка: 'music', music: 'music', видео: 'videos',
-  videos: 'videos', home: 'home', 'домашняя папка': 'home',
+  videos: 'videos', home: 'home', 'домашняя папка': 'home', screenshots: 'screenshots', скриншоты: 'screenshots',
 };
 
 async function openPath(target) {
   let p = String(target || '').trim();
   const key = FOLDERS[p.toLowerCase()];
-  if (key) p = app.getPath(key);
+  if (key === 'screenshots') {
+    p = path.join(app.getPath('pictures'), 'ExternalAI');
+    fs.mkdirSync(p, { recursive: true });
+  } else if (key) p = app.getPath(key);
   p = p.replace(/^~(?=$|[\\/])/, os.homedir());
   if (!fs.existsSync(p)) return fail('Путь не найден: ' + p);
   const err = await shell.openPath(p);
@@ -97,6 +100,20 @@ const APP_ALIASES = {
   'почта': 'mail', 'календарь': 'calendar', 'магазин': 'microsoft store', 'часы': 'clock',
   'фотографии': 'photos', 'ютуб музыка': 'youtube music', 'гитхаб десктоп': 'github desktop',
   'блендер': 'blender', 'юнити': 'unity', 'кубейс': 'cubase', 'фл студио': 'fl studio',
+  'диспетчер устройств': 'device manager', 'управление дисками': 'disk management', 'службы': 'services',
+  'редактор реестра': 'regedit', 'реестр': 'regedit', 'корзину': 'recycle bin', 'корзина': 'recycle bin',
+  'мой компьютер': 'this pc', 'этот компьютер': 'this pc', 'компьютер': 'this pc', 'сведения о системе': 'system info',
+  'монитор ресурсов': 'resource monitor', 'экранную клавиатуру': 'on-screen keyboard', 'экранная клавиатура': 'on-screen keyboard',
+  'лупу': 'magnifier', 'лупа': 'magnifier', 'микшер': 'sound control', 'сетевые подключения': 'network connections',
+  'программы и компоненты': 'programs and features', 'удаление программ': 'programs and features', 'вордпад': 'wordpad',
+  'таблицу символов': 'character map', 'удаленный рабочий стол': 'remote desktop', 'диспетчер': 'task manager',
+  'гугл диск': 'google drive', 'ван драйв': 'onedrive', 'нотепад': 'notepad++', 'нотпад': 'notepad++',
+  'идея': 'intellij idea', 'пайчарм': 'pycharm', 'андроид студио': 'android studio', 'постман': 'postman',
+  'ватсапп': 'whatsapp', 'вк мессенджер': 'vk messenger', 'макс': 'max', 'батл нет': 'battle.net', 'юбисофт': 'ubisoft connect',
+  'кс': 'counter-strike', 'контра': 'counter-strike', 'дота': 'dota 2', 'гта': 'grand theft auto', 'роблокс': 'roblox',
+  'эпик': 'epic games launcher', 'фортнайт': 'fortnite', 'валорант': 'valorant', 'лига легенд': 'league of legends',
+  'ворд пад': 'wordpad', 'аудасити': 'audacity', 'гимп': 'gimp', 'кейпкат': 'capcut', 'премьер': 'premiere pro',
+  'афтер эффектс': 'after effects', 'иллюстратор': 'illustrator', 'фигма': 'figma', 'ноушн': 'notion', 'обсидиан': 'obsidian',
 };
 
 // Встроенные программы Windows: короткий путь без поиска.
@@ -104,6 +121,11 @@ const WIN_BUILTIN = {
   notepad: ['notepad.exe'], calculator: ['calc.exe'], explorer: ['explorer.exe'], 'task manager': ['taskmgr.exe'],
   'control panel': ['control.exe'], settings: ['explorer.exe', 'ms-settings:'], cmd: ['cmd.exe', '/k'],
   powershell: ['powershell.exe'], terminal: ['wt.exe'], paint: ['mspaint.exe'], 'snipping tool': ['snippingtool.exe'],
+  'device manager': ['mmc.exe', 'devmgmt.msc'], 'disk management': ['mmc.exe', 'diskmgmt.msc'], services: ['mmc.exe', 'services.msc'],
+  regedit: ['regedit.exe'], 'recycle bin': ['explorer.exe', 'shell:RecycleBinFolder'], 'this pc': ['explorer.exe', 'shell:MyComputerFolder'],
+  'system info': ['msinfo32.exe'], 'resource monitor': ['resmon.exe'], 'on-screen keyboard': ['osk.exe'], magnifier: ['magnify.exe'],
+  'sound control': ['control.exe', 'mmsys.cpl'], 'network connections': ['control.exe', 'ncpa.cpl'], 'programs and features': ['control.exe', 'appwiz.cpl'],
+  wordpad: ['write.exe'], 'character map': ['charmap.exe'], 'remote desktop': ['mstsc.exe'],
   browser: null,
 };
 
@@ -171,17 +193,20 @@ function scoreName(query, name) {
   return best;
 }
 
-async function findApp(query) {
+// Часто запускаемые программы слегка поднимаются в поиске — ассистент «привыкает».
+const usage = new Map();
+
+async function findApp(query, minScore = 0.72) {
   const index = await buildAppIndex();
   let best = null;
   for (const item of index) {
-    const s = scoreName(query, item.name);
+    const s = scoreName(query, item.name) + Math.min(0.06, (usage.get(item.name) || 0) * 0.01);
     if (!best || s > best.score) best = { ...item, score: s };
   }
-  return best && best.score >= 0.72 ? best : null;
+  return best && best.score >= minScore ? best : null;
 }
 
-async function openApp(name) {
+async function openApp(name, { strict = false } = {}) {
   const raw = normalize(name);
   if (!raw) return fail('Не понял, что открыть');
   const canon = APP_ALIASES[raw] || raw;
@@ -194,8 +219,10 @@ async function openApp(name) {
     return ok('Открываю ' + name);
   }
 
-  const found = (await findApp(canon)) || (canon !== raw ? await findApp(raw) : null);
+  const min = strict ? 0.86 : 0.72;
+  const found = (await findApp(canon, min)) || (canon !== raw ? await findApp(raw, min) : null);
   if (found) {
+    usage.set(found.name, (usage.get(found.name) || 0) + 1);
     if (found.kind === 'win') detached('explorer.exe', ['shell:AppsFolder\\' + found.id]);
     else if (found.kind === 'mac') detached('open', [found.id]);
     else detached('gtk-launch', [found.id]);
@@ -203,6 +230,7 @@ async function openApp(name) {
   }
 
   // Последняя попытка — системный запуск по имени (App Paths, PATH).
+  if (strict) return fail(`Не нашёл программу «${name}»`);
   if (IS_WIN) {
     // Только если программа точно есть в PATH или в реестре App Paths — иначе Windows покажет окно ошибки.
     const bin = canon.replace(/[^a-z0-9._-]/gi, '');
@@ -436,7 +464,260 @@ function notify(title, body) {
   return ok('Уведомление показано');
 }
 
+// ───────────────────────── клавиши ─────────────────────────
+
+// Если окно ассистента активно — убираем его, чтобы клавиши ушли в нужную программу.
+async function releaseFocus(win) {
+  if (win && !win.isDestroyed() && win.isFocused()) {
+    win.minimize();
+    await sleep(450);
+  }
+}
+
+const SENDKEYS_SPECIAL = {
+  enter: '{ENTER}', tab: '{TAB}', esc: '{ESC}', escape: '{ESC}', space: ' ', backspace: '{BACKSPACE}', delete: '{DELETE}',
+  up: '{UP}', down: '{DOWN}', left: '{LEFT}', right: '{RIGHT}', home: '{HOME}', end: '{END}', pageup: '{PGUP}', pagedown: '{PGDN}',
+  plus: '{ADD}', minus: '{SUBTRACT}', insert: '{INSERT}', printscreen: '{PRTSC}',
+};
+for (let i = 1; i <= 12; i++) SENDKEYS_SPECIAL['f' + i] = `{F${i}}`;
+const XDO_SPECIAL = {
+  enter: 'Return', tab: 'Tab', esc: 'Escape', escape: 'Escape', space: 'space', backspace: 'BackSpace', delete: 'Delete',
+  up: 'Up', down: 'Down', left: 'Left', right: 'Right', home: 'Home', end: 'End', pageup: 'Prior', pagedown: 'Next',
+  plus: 'plus', minus: 'minus', insert: 'Insert', printscreen: 'Print',
+};
+const MAC_CODES = { enter: 36, tab: 48, esc: 53, escape: 53, space: 49, backspace: 51, delete: 117, up: 126, down: 125, left: 123, right: 124, home: 115, end: 119, pageup: 116, pagedown: 121 };
+
+/** Нажать сочетание клавиш, например «ctrl+shift+t», «alt+f4», «enter». */
+async function pressKeys(combo, win, times = 1) {
+  const parts = String(combo || '').toLowerCase().replace(/\s+/g, '').split('+').filter(Boolean);
+  if (!parts.length) return fail('Не указаны клавиши');
+  const key = parts.pop();
+  const mods = parts;
+  const n = Math.max(1, Math.min(50, times | 0));
+  await releaseFocus(win);
+  let r;
+  if (IS_WIN) {
+    if (mods.includes('win')) {
+      // SendKeys не умеет клавишу Win — нажимаем её через keybd_event.
+      const vk = { d: 0x44, e: 0x45, r: 0x52, l: 0x4c, up: 0x26, down: 0x28, left: 0x25, right: 0x27, tab: 0x09, a: 0x41, i: 0x49, s: 0x53, v: 0x56, p: 0x50, m: 0x4d }[key];
+      if (!vk) return fail('Такое сочетание с Win не поддерживается');
+      const shift = mods.includes('shift');
+      const down = (k) => `[W.K]::keybd_event(${k},0,0,[UIntPtr]::Zero);`;
+      const up = (k) => `[W.K]::keybd_event(${k},0,2,[UIntPtr]::Zero);`;
+      r = await ps(`Add-Type -Name K -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern void keybd_event(byte b,byte s,uint f,System.UIntPtr e);'; ` +
+        down(0x5b) + (shift ? down(0x10) : '') + down(vk) + up(vk) + (shift ? up(0x10) : '') + up(0x5b));
+    } else {
+      const modStr = mods.map((m) => ({ ctrl: '^', control: '^', alt: '%', shift: '+' }[m] || '')).join('');
+      const k = SENDKEYS_SPECIAL[key] || (key.length === 1 ? key.replace(/[+^%~(){}[\]]/g, '{$&}') : null);
+      if (!k) return fail('Неизвестная клавиша: ' + key);
+      const seq = (modStr + k).replace(/"/g, '`"');
+      r = await ps(`$w=New-Object -ComObject WScript.Shell; for($i=0;$i -lt ${n};$i++){ $w.SendKeys("${seq}"); Start-Sleep -Milliseconds 40 }`);
+    }
+  } else if (IS_MAC) {
+    const using = mods.map((m) => ({ ctrl: 'command down', control: 'control down', cmd: 'command down', alt: 'option down', shift: 'shift down' }[m])).filter(Boolean);
+    const u = using.length ? ` using {${using.join(', ')}}` : '';
+    const action = MAC_CODES[key] !== undefined ? `key code ${MAC_CODES[key]}${u}` : `keystroke "${key.replace(/"/g, '')}"${u}`;
+    r = await runCmd(`osascript -e 'tell application "System Events" to repeat ${n} times' -e '${action}' -e 'end repeat'`);
+  } else {
+    const xmods = mods.map((m) => ({ ctrl: 'ctrl', control: 'ctrl', alt: 'alt', shift: 'shift', win: 'super' }[m])).filter(Boolean);
+    const k = XDO_SPECIAL[key] || key;
+    r = await runCmd(`xdotool key --repeat ${n} --clearmodifiers ${[...xmods, k].join('+')}`);
+  }
+  return r.code === 0 ? ok('Нажал ' + combo) : fail('Не удалось нажать клавиши' + (IS_WIN || IS_MAC ? '' : ' (нужен xdotool)'));
+}
+
+// Свернуть / развернуть / закрыть активное окно другой программы.
+async function activeWindow(action, win) {
+  if (win && !win.isDestroyed() && win.isFocused()) {
+    // Активно окно ассистента — действуем с ним, а не с окном позади.
+    if (action === 'minimize') { win.minimize(); return ok('Сворачиваю'); }
+    if (action === 'maximize') { win.maximize(); return ok('Разворачиваю'); }
+    win.hide();
+    return ok('Убрал окно ассистента в трей');
+  }
+  if (action === 'close') return pressKeys(IS_MAC ? 'ctrl+w' : 'alt+f4', null);
+  if (IS_WIN) {
+    const cmd = action === 'minimize' ? 6 : 3;
+    const r = await ps(`Add-Type -Name U -Namespace W -MemberDefinition '[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h,int c);'; [W.U]::ShowWindow([W.U]::GetForegroundWindow(), ${cmd}) | Out-Null`);
+    return r.code === 0 ? ok(action === 'minimize' ? 'Свернул окно' : 'Развернул окно') : fail('Не получилось');
+  }
+  if (IS_MAC) return pressKeys(action === 'minimize' ? 'ctrl+m' : 'ctrl+control+f', null);
+  const r = await runCmd(action === 'minimize' ? 'xdotool getactivewindow windowminimize' : 'wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz');
+  return r.code === 0 ? ok('Готово') : fail('Не получилось (нужен xdotool/wmctrl)');
+}
+
+// Выделенный текст в активной программе: Ctrl+C и чтение буфера.
+async function selectedText(win) {
+  const prev = clipboard.readText();
+  clipboard.writeText('');
+  await pressKeys(IS_MAC ? 'ctrl+c' : 'ctrl+c', win);
+  await sleep(350);
+  const text = clipboard.readText();
+  setTimeout(() => clipboard.writeText(prev), 300);
+  return text ? ok('Выделенный текст', { text: text.slice(0, 8000) }) : fail('Ничего не выделено');
+}
+
+// ───────────────────────── яркость ─────────────────────────
+
+async function brightness(action, amount = 10) {
+  if (IS_WIN) {
+    const cur = await ps('(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1).CurrentBrightness');
+    const now = parseInt(cur.stdout, 10);
+    if (cur.code !== 0 || Number.isNaN(now)) return fail('Яркость этого монитора нельзя изменить программно — так бывает на внешних мониторах');
+    let next = action === 'up' ? now + amount : action === 'down' ? now - amount : amount;
+    next = Math.max(0, Math.min(100, Math.round(next)));
+    const r = await ps(`$m=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods | Select-Object -First 1; Invoke-CimMethod -InputObject $m -MethodName WmiSetBrightness -Arguments @{Timeout=1;Brightness=[byte]${next}} | Out-Null`);
+    return r.code === 0 ? ok(`Яркость ${next} процентов`) : fail('Не удалось изменить яркость');
+  }
+  if (IS_MAC) return fail('На macOS яркость меняется клавишами F1 и F2');
+  const arg = action === 'up' ? `+${amount}%` : action === 'down' ? `${amount}%-` : `${amount}%`;
+  const r = await runCmd(`brightnessctl set ${arg}`);
+  return r.code === 0 ? ok('Яркость изменена') : fail('Не удалось изменить яркость (нужен brightnessctl)');
+}
+
+// ───────────────────────── диски и файлы ─────────────────────────
+
+async function diskInfo() {
+  const disks = [];
+  if (IS_WIN) {
+    const r = await ps('Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress');
+    try {
+      for (const d of [].concat(JSON.parse(r.stdout || '[]'))) {
+        if (d?.Size) disks.push({ name: d.DeviceID, totalGB: +(d.Size / 1024 ** 3).toFixed(0), freeGB: +(d.FreeSpace / 1024 ** 3).toFixed(1) });
+      }
+    } catch { /* нет данных */ }
+  } else {
+    try {
+      const st = fs.statfsSync('/');
+      disks.push({ name: '/', totalGB: +((st.blocks * st.bsize) / 1024 ** 3).toFixed(0), freeGB: +((st.bavail * st.bsize) / 1024 ** 3).toFixed(1) });
+    } catch { /* нет данных */ }
+  }
+  return disks.length ? ok('Диски', { disks }) : fail('Не удалось получить сведения о дисках');
+}
+
+function searchRoots() {
+  const home = os.homedir();
+  const roots = ['desktop', 'documents', 'downloads', 'pictures', 'music', 'videos'].map((k) => {
+    try { return app.getPath(k); } catch { return null; }
+  });
+  roots.push(path.join(home, 'OneDrive'), path.join(home, 'OneDrive', 'Desktop'), path.join(home, 'OneDrive', 'Documents'), path.join(home, 'Yandex.Disk'));
+  return [...new Set(roots.filter((r) => r && fs.existsSync(r)))];
+}
+
+/** Поиск файлов и папок по названию в папках пользователя. */
+async function findFiles(query, { limit = 8, dirsOnly = false } = {}) {
+  const q = normalize(query);
+  if (!q) return fail('Что искать?');
+  const started = Date.now();
+  const results = [];
+  let seen = 0;
+  const skip = new Set(['node_modules', '.git', 'appdata', '$recycle.bin', 'library', '.cache', 'cache']);
+  async function walk(dir, depth) {
+    if (depth > 6 || seen > 60000 || Date.now() - started > 4000) return;
+    let entries;
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      seen++;
+      if (e.name.startsWith('.') || skip.has(e.name.toLowerCase())) continue;
+      const full = path.join(dir, e.name);
+      const isDir = e.isDirectory();
+      if (!dirsOnly || isDir) {
+        const base = e.name.replace(/\.[^.]+$/, '');
+        const score = Math.max(scoreName(q, base), scoreName(q, e.name));
+        if (score >= 0.7) results.push({ path: full, name: e.name, isDir, score });
+      }
+      if (isDir) await walk(full, depth + 1);
+    }
+  }
+  for (const root of searchRoots()) await walk(root, 0);
+  results.sort((a, b) => b.score - a.score || a.path.length - b.path.length);
+  const top = results.slice(0, limit);
+  return top.length ? ok(`Нашёл: ${top[0].name}`, { files: top }) : fail(`Не нашёл «${query}» в ваших папках`);
+}
+
+async function openFile(query, { reveal = false } = {}) {
+  const r = await findFiles(query, { limit: 5 });
+  if (!r.ok) {
+    if (IS_WIN) {
+      await shell.openExternal(`search-ms:query=${encodeURIComponent(query)}&crumb=location:${encodeURIComponent(os.homedir())}`);
+      return ok(`Точного совпадения нет, открыл поиск Windows по «${query}»`);
+    }
+    return r;
+  }
+  const best = r.files[0];
+  if (reveal) shell.showItemInFolder(best.path);
+  else {
+    const err = await shell.openPath(best.path);
+    if (err) return fail(err);
+  }
+  return ok(`${reveal ? 'Показываю' : 'Открываю'} ${best.name}`, { files: r.files });
+}
+
+function resolvePlace(where) {
+  const w = normalize(where || '');
+  if (/документ/.test(w)) return app.getPath('documents');
+  if (/загрузк|закачк/.test(w)) return app.getPath('downloads');
+  if (/изображ|картин|фото/.test(w)) return app.getPath('pictures');
+  if (/музык/.test(w)) return app.getPath('music');
+  if (/видео/.test(w)) return app.getPath('videos');
+  return app.getPath('desktop');
+}
+
+async function createItem(kind, name, where) {
+  const clean = String(name || '').replace(/[<>:"/\\|?*]/g, '').trim() || (kind === 'folder' ? 'Новая папка' : 'Новый документ');
+  const dir = resolvePlace(where);
+  let target = path.join(dir, kind === 'folder' ? clean : (/\.[a-z0-9]{1,5}$/i.test(clean) ? clean : clean + '.txt'));
+  let i = 2;
+  while (fs.existsSync(target)) {
+    const ext = path.extname(target);
+    target = path.join(dir, `${clean.replace(/\.[^.]+$/, '')} (${i++})${kind === 'folder' ? '' : ext}`);
+  }
+  if (kind === 'folder') fs.mkdirSync(target, { recursive: true });
+  else fs.writeFileSync(target, '', 'utf8');
+  shell.showItemInFolder(target);
+  return ok(`${kind === 'folder' ? 'Папка' : 'Файл'} «${path.basename(target)}» создан${kind === 'folder' ? 'а' : ''}`, { path: target });
+}
+
+async function lastScreenshot() {
+  const dir = path.join(app.getPath('pictures'), 'ExternalAI');
+  let files = [];
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.png')).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })); } catch { /* нет папки */ }
+  if (!files.length) return fail('Скриншотов пока нет');
+  files.sort((a, b) => b.t - a.t);
+  await shell.openPath(path.join(dir, files[0].f));
+  return ok('Открываю последний скриншот');
+}
+
+async function emptyTrash() {
+  const r = IS_WIN ? await ps('Clear-RecycleBin -Force -ErrorAction SilentlyContinue')
+    : IS_MAC ? await runCmd(`osascript -e 'tell application "Finder" to empty trash'`)
+      : await runCmd('gio trash --empty');
+  return r.code === 0 ? ok('Корзина очищена') : fail('Не удалось очистить корзину');
+}
+
+// Разделы настроек Windows.
+const SETTINGS_PAGES = [
+  [/звук|аудио|динамик/, 'sound'], [/микрофон/, 'privacy-microphone'], [/экран|дисплей|монитор|разрешени/, 'display'],
+  [/вай ?фай|wi ?fi|wifi|беспроводн/, 'network-wifi'], [/сет|интернет/, 'network-status'], [/блютуз|bluetooth|устройств/, 'bluetooth'],
+  [/обновлени/, 'windowsupdate'], [/приложени|программ/, 'appsfeatures'], [/автозагруз|автозапуск/, 'startupapps'],
+  [/батаре|питани|энерги/, 'powersleep'], [/фон|обои|персонализ/, 'personalization-background'], [/цвет|тем/, 'personalization-colors'],
+  [/мыш|тачпад/, 'mousetouchpad'], [/клавиатур|язык|раскладк/, 'regionlanguage'], [/дат|врем/, 'dateandtime'],
+  [/принтер|печат/, 'printers'], [/уведомлени/, 'notifications'], [/хранилищ|памят|диск/, 'storagesense'],
+  [/конфиденциальн|приватн/, 'privacy'], [/учетн|аккаунт/, 'yourinfo'], [/ночн/, 'nightlight'], [/игр/, 'gaming-gamemode'],
+  [/по умолчанию/, 'defaultapps'], [/камер/, 'privacy-webcam'], [/безопасн|защитник|антивирус/, 'windowsdefender'],
+];
+
+async function openSettingsPage(what) {
+  const w = normalize(what);
+  const hit = SETTINGS_PAGES.find(([re]) => re.test(w));
+  if (!hit) return fail('Не знаю такого раздела настроек');
+  if (!IS_WIN) return fail('Разделы настроек открываю только в Windows');
+  await shell.openExternal('ms-settings:' + hit[1]);
+  return ok('Открываю настройки');
+}
+
 module.exports = {
   openUrl, openPath, openApp, closeApp, volume, media, power, screenshot, typeText, copyText, readClipboard,
-  minimizeAll, runShell, systemInfo, notify, buildAppIndex, IS_WIN, IS_MAC,
+  minimizeAll, runShell, systemInfo, notify, buildAppIndex, pressKeys, activeWindow, selectedText, brightness,
+  diskInfo, findFiles, openFile, createItem, lastScreenshot, emptyTrash, openSettingsPage, IS_WIN, IS_MAC,
 };

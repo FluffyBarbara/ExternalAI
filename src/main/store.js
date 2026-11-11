@@ -44,6 +44,9 @@ const DEFAULTS = {
     reduceMotion: false,
   },
   notes: [],
+  facts: [],          // что ИИ знает о пользователе
+  learned: [],        // выученные фразы и свои команды
+  learning: { autoLearn: true },
   userName: '',
   firstRun: true,
 };

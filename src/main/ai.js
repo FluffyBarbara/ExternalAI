@@ -24,7 +24,9 @@ const SYSTEM_PROMPT = `Ты — ExternalAI, персональный голос�
 - Перед необратимыми действиями (удаление файлов, форматирование, изменение системных настроек) коротко опиши, что собираешься сделать; пользователь подтвердит запуск команды в окне подтверждения.
 - Для свежих фактов, новостей, курсов, расписаний используй веб-поиск, если он доступен.
 - Если инструмент вернул ошибку — попробуй другой способ, а если не вышло, честно скажи, что не получилось.
-- После действия кратко сообщи результат.`;
+- После действия кратко сообщи результат.
+- Запоминай важное о пользователе (имя, привычки, любимые программы и сайты, где лежат его файлы, предпочтения) инструментом remember_fact и используй эти знания. Не сохраняй пароли и другие секреты.
+- Если просьба неоднозначна, выбери самый вероятный вариант и выполни его, а не переспрашивай. Понимай команды с полуслова и с ошибками распознавания речи.`;
 
 function toolDefs() {
   const s = store.get();
@@ -126,6 +128,58 @@ function toolDefs() {
       input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['add', 'list', 'clear'] }, text: { type: 'string' } }, required: ['action'] },
     },
   ];
+  tools.push(
+    {
+      name: 'press_keys',
+      description: 'Нажать сочетание клавиш в активном окне. Формат: «ctrl+t», «alt+f4», «ctrl+shift+t», «win+d», «enter», «f5», «pagedown».',
+      input_schema: { type: 'object', properties: { combo: { type: 'string' }, times: { type: 'integer' } }, required: ['combo'] },
+    },
+    {
+      name: 'window_control',
+      description: 'Свернуть, развернуть или закрыть активное окно.',
+      input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['minimize', 'maximize', 'close'] } }, required: ['action'] },
+    },
+    {
+      name: 'read_selected_text',
+      description: 'Получить текст, выделенный пользователем в активной программе.',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'set_brightness',
+      description: 'Яркость экрана (ноутбуки).',
+      input_schema: { type: 'object', properties: { action: { type: 'string', enum: ['up', 'down', 'set'] }, amount: { type: 'integer' } }, required: ['action'] },
+    },
+    {
+      name: 'find_files',
+      description: 'Найти файлы и папки по названию в папках пользователя (рабочий стол, документы, загрузки и т. д.). Возвращает пути.',
+      input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    },
+    {
+      name: 'create_item',
+      description: 'Создать папку или текстовый файл. where: desktop, documents, downloads, pictures, music, videos.',
+      input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['folder', 'file'] }, name: { type: 'string' }, where: { type: 'string' } }, required: ['kind', 'name'] },
+    },
+    {
+      name: 'disk_info',
+      description: 'Свободное и общее место на дисках.',
+      input_schema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'open_settings_page',
+      description: 'Открыть раздел настроек Windows по описанию: звук, экран, wifi, bluetooth, обновления, приложения, автозагрузка, питание, фон, мышь, язык, дата, принтеры, уведомления, хранилище и т. п.',
+      input_schema: { type: 'object', properties: { what: { type: 'string' } }, required: ['what'] },
+    },
+    {
+      name: 'remember_fact',
+      description: 'Запомнить факт о пользователе навсегда (например «любит рок», «работает программистом», «рабочие файлы в D:\\Work»).',
+      input_schema: { type: 'object', properties: { fact: { type: 'string' } }, required: ['fact'] },
+    },
+    {
+      name: 'forget_fact',
+      description: 'Забыть ранее сохранённый факт (передай его текст или часть текста).',
+      input_schema: { type: 'object', properties: { fact: { type: 'string' } }, required: ['fact'] },
+    },
+  );
   if (s.ai.webSearch) tools.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 5 });
   return tools;
 }
@@ -153,7 +207,9 @@ function contextLine() {
   const now = new Date();
   const s = store.get();
   const name = s.userName ? `Пользователя зовут ${s.userName}. ` : '';
-  return `[Контекст: ${now.toLocaleString('ru-RU', { dateStyle: 'full', timeStyle: 'short' })}; ОС: ${os.type()} ${os.release()} (${process.platform}); пользователь системы: ${os.userInfo().username}; город: ${s.system.city}. ${name}]`;
+  const facts = (s.facts || []).slice(-40).map((f) => `- ${f.text}`).join('\n');
+  const memory = facts ? `\nЧто ты знаешь о пользователе:\n${facts}` : '';
+  return `[Контекст: ${now.toLocaleString('ru-RU', { dateStyle: 'full', timeStyle: 'short' })}; ОС: ${os.type()} ${os.release()} (${process.platform}); пользователь системы: ${os.userInfo().username}; город: ${s.system.city}. ${name}${memory}]`;
 }
 
 /**
@@ -196,6 +252,29 @@ async function runTool(name, input, bridge) {
     case 'clipboard': return input.action === 'write' ? actions.copyText(input.text) : actions.readClipboard();
     case 'system_info': return actions.systemInfo();
     case 'set_timer': return bridge.call('timer', { seconds: input.seconds, label: input.label || '' });
+    case 'press_keys': return actions.pressKeys(input.combo, bridge.win, input.times || 1);
+    case 'window_control': return actions.activeWindow(input.action, bridge.win);
+    case 'read_selected_text': return actions.selectedText(bridge.win);
+    case 'set_brightness': return actions.brightness(input.action, input.amount ?? 10);
+    case 'find_files': return actions.findFiles(input.query);
+    case 'create_item': return actions.createItem(input.kind, input.name, input.where);
+    case 'disk_info': return actions.diskInfo();
+    case 'open_settings_page': return actions.openSettingsPage(input.what);
+    case 'remember_fact': {
+      const text = String(input.fact || '').trim();
+      if (!text) return { ok: false, message: 'Пустой факт' };
+      const facts = (s.facts || []).filter((f) => f.text.toLowerCase() !== text.toLowerCase());
+      store.set('facts', [...facts, { text, at: Date.now() }].slice(-200));
+      bridge.call('memoryChanged', {});
+      return { ok: true, message: 'Запомнил' };
+    }
+    case 'forget_fact': {
+      const q = String(input.fact || '').toLowerCase();
+      const facts = (s.facts || []).filter((f) => !f.text.toLowerCase().includes(q));
+      store.set('facts', facts);
+      bridge.call('memoryChanged', {});
+      return { ok: true, message: 'Забыл' };
+    }
     case 'notes': {
       const notes = s.notes || [];
       if (input.action === 'add' && input.text) {
@@ -244,6 +323,7 @@ async function ask(text, bridge) {
   const anthropic = getClient();
   const tools = toolDefs();
   let finalText = '';
+  const done = []; // какие инструменты вызывались — интерфейс может их выучить
 
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
@@ -272,6 +352,7 @@ async function ask(text, bridge) {
         finalText = finalText || 'Извините, с этим я помочь не могу.';
         break;
       }
+      if (response.content.some((b) => b.type === 'server_tool_use')) done.push({ name: 'web_search', ok: true });
       if (response.stop_reason === 'pause_turn') continue; // веб-поиск ещё идёт
       if (response.stop_reason === 'max_tokens') {
         finalText = finalText || 'Ответ получился слишком длинным, переформулируйте, пожалуйста.';
@@ -291,6 +372,7 @@ async function ask(text, bridge) {
           result = { ok: false, message: String(e?.message || e) };
         }
         bridge.log({ type: 'tool-result', name: call.name, ok: result?.ok !== false, message: result?.message });
+        done.push({ name: call.name, input: call.input, ok: result?.ok !== false });
         results.push({
           type: 'tool_result',
           tool_use_id: call.id,
@@ -308,7 +390,7 @@ async function ask(text, bridge) {
   // Сохраняем диалог целиком (включая блоки размышлений), чтобы следующий
   // запрос продолжил его без правок истории.
   history = messages;
-  return { ok: true, text: finalText || 'Готово.' };
+  return { ok: true, text: finalText || 'Готово.', actions: done };
 }
 
 async function testKey() {
@@ -327,4 +409,13 @@ async function testKey() {
   }
 }
 
-module.exports = { ask, reset, testKey };
+// Инструменты, которые можно повторять по выученной фразе без ИИ.
+const LEARNABLE = new Set(['open_url', 'open_app', 'close_app', 'open_path', 'set_volume', 'media_control', 'take_screenshot',
+  'press_keys', 'window_control', 'set_brightness', 'open_settings_page', 'set_timer', 'create_item']);
+
+async function runLearned(name, input, bridge) {
+  if (!LEARNABLE.has(name)) return { ok: false, message: 'Это действие нельзя повторять автоматически' };
+  return runTool(name, input, bridge);
+}
+
+module.exports = { ask, reset, testKey, runLearned, LEARNABLE: [...LEARNABLE] };

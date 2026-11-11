@@ -205,7 +205,7 @@ function handle(channel, fn) {
 // Действия, которые интерфейс может вызывать напрямую (локальные команды).
 const DIRECT_ACTIONS = {
   openUrl: (a) => actions.openUrl(a.url),
-  openApp: (a) => actions.openApp(a.name),
+  openApp: (a) => actions.openApp(a.name, { strict: !!a.strict }),
   closeApp: (a) => actions.closeApp(a.name),
   openPath: (a) => actions.openPath(a.path),
   volume: (a) => actions.volume(a.action, a.amount),
@@ -217,7 +217,33 @@ const DIRECT_ACTIONS = {
   minimizeAll: () => actions.minimizeAll(),
   notify: (a) => actions.notify(a.title, a.body),
   systemInfo: () => actions.systemInfo(),
+  readClipboard: () => actions.readClipboard(),
+  keys: (a) => actions.pressKeys(a.combo, win, a.times || 1),
+  activeWindow: (a) => actions.activeWindow(a.action, win),
+  selectedText: () => actions.selectedText(win),
+  brightness: (a) => actions.brightness(a.action, a.amount),
+  diskInfo: () => actions.diskInfo(),
+  findFiles: (a) => actions.findFiles(a.query),
+  openFile: (a) => actions.openFile(a.query, { reveal: !!a.reveal }),
+  createItem: (a) => actions.createItem(a.kind, a.name, a.where),
+  lastScreenshot: () => actions.lastScreenshot(),
+  emptyTrash: () => actions.emptyTrash(),
+  settingsPage: (a) => actions.openSettingsPage(a.what),
 };
+
+// Сообщения о прогрессе загрузки не чаще 5 раз в секунду — интерфейс не дёргается.
+function throttledProgress() {
+  let last = 0;
+  let lastStage = '';
+  return (p) => {
+    const now = Date.now();
+    if (p.stage !== lastStage || now - last > 200 || p.stage === 'done') {
+      last = now;
+      lastStage = p.stage;
+      send('model:progress', p);
+    }
+  };
+}
 
 function registerIpc() {
   handle('settings:get', () => store.get());
@@ -241,9 +267,11 @@ function registerIpc() {
   handle('ai:ask', (text) => ai.ask(String(text || ''), bridge));
   handle('ai:reset', () => { ai.reset(); return { ok: true }; });
   handle('ai:test', () => ai.testKey());
+  // Повтор выученных действий без обращения к ИИ.
+  handle('ai:runTool', (name, input) => ai.runLearned(name, input, bridge));
 
   handle('model:status', () => ({ ready: model.hasModel(), name: model.MODEL_NAME }));
-  handle('model:ensure', () => model.ensureModel((p) => send('model:progress', p)));
+  handle('model:ensure', () => model.ensureModel(throttledProgress()));
   handle('model:import', async () => {
     const r = await dialog.showOpenDialog(win, {
       title: 'Выберите модель Vosk (.zip или .tar.gz)',
@@ -251,7 +279,7 @@ function registerIpc() {
       properties: ['openFile'],
     });
     if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
-    return model.importModel(r.filePaths[0], (p) => send('model:progress', p));
+    return model.importModel(r.filePaths[0], throttledProgress());
   });
   handle('model:remove', () => { model.removeModel(); return { ok: true }; });
 

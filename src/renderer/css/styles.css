@@ -201,6 +201,7 @@ button { cursor: pointer; }
   padding: 0 20px;
 }
 .transcript .placeholder { color: var(--dim); font-size: 15px; }
+.transcript { flex: none; height: 56px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .transcript .partial { color: var(--muted); }
 .transcript .final { color: var(--text); text-shadow: 0 0 18px rgba(var(--accent-rgb), 0.35); }
 .transcript .wake { color: var(--accent); font-weight: 500; }
@@ -236,6 +237,39 @@ button { cursor: pointer; }
 .hint { font-size: 12px; color: var(--dim); }
 .hint b { color: var(--muted); font-weight: 600; }
 kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--muted); }
+
+/* Нижняя часть ядра фиксированной высоты: карточка загрузки встаёт на её место без сдвигов. */
+.core-bottom { position: relative; width: 100%; max-width: 760px; height: 196px; display: flex; flex-direction: column; align-items: center; gap: 18px; flex: none; }
+.core-bottom.setup > :not(.setup-card) { visibility: hidden; }
+.setup-card {
+  position: absolute; inset: 0; margin: 0 auto; width: min(560px, 100%);
+  display: none; flex-direction: column; justify-content: center; gap: 0;
+  padding: 18px 22px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  backdrop-filter: blur(16px);
+}
+.core-bottom.setup .setup-card { display: flex; }
+.setup-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.setup-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setup-pct { font-size: 15px; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
+.setup-card .progress { margin: 12px 0 8px; }
+.setup-status { height: 34px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 17px; }
+.setup-note { font-size: 11.5px; color: var(--dim); height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setup-actions { display: flex; gap: 8px; margin-top: 10px; height: 30px; visibility: hidden; }
+.setup-card.failed .setup-actions { visibility: visible; }
+.setup-card.failed .setup-pct { color: var(--danger); }
+.setup-card.failed .progress i { background: var(--danger); box-shadow: none; }
+
+/* обучение */
+.teach { display: grid; grid-template-columns: 1fr 1.6fr auto; gap: 8px; margin: 6px 0 4px; }
+.teach-one { grid-template-columns: 1fr auto; }
+.learn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.learn-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); font-size: 12.5px; user-select: text; }
+.learn-list li.empty { color: var(--dim); border-style: dashed; }
+.learn-list .lp { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.learn-list .la { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.learn-list .lk { font: 10px var(--mono); color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.learn-list .lx { background: none; border: 0; color: var(--dim); font-size: 16px; line-height: 1; padding: 0 2px; }
+.learn-list .lx:hover { color: var(--danger); }
 
 /* ───────── журнал ───────── */
 .card-log { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -307,9 +341,6 @@ kbd { font: 11px var(--mono); padding: 1px 6px; border-radius: 5px; border: 1px 
 .progress { height: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); overflow: hidden; margin: 16px 0 8px; }
 .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #0891b2, var(--accent), #e0fbff); box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.8); transition: width 0.3s; }
 
-.modal-onboard { text-align: center; width: min(560px, calc(100vw - 40px)); }
-.onboard-logo { display: grid; place-items: center; margin-bottom: 6px; }
-.modal-onboard .modal-actions { justify-content: center; }
 
 .modal-confirm { text-align: center; border-color: rgba(244, 63, 94, 0.5); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 60px rgba(244, 63, 94, 0.15); }
 .confirm-icon { width: 54px; height: 54px; margin: 0 auto 8px; border-radius: 50%; display: grid; place-items: center; font: 700 26px var(--mono); color: var(--danger); border: 2px solid var(--danger); box-shadow: 0 0 24px rgba(244, 63, 94, 0.45); }

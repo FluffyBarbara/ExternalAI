@@ -9,20 +9,31 @@ const { createCommands, parseDuration } = await import('../src/renderer/js/comma
 const calls = [];
 const timers = [];
 const notes = [];
+let learnedStore = [];
+let factsStore = [];
+const toolRuns = [];
 const ctx = {
   ext: {
     action: async (name, args) => {
       calls.push({ name, args });
       if (name === 'systemInfo') return { cpu: 12, memUsedGB: 4, memTotalGB: 16 };
-      if (name === 'openApp') return args.name === 'несуществующая штука' ? { ok: false, message: 'Не нашёл' } : { ok: true, message: 'Запускаю ' + args.name };
+      if (name === 'openApp') {
+        if (args.strict) return /^(телеграм|steam|стим)$/.test(args.name) ? { ok: true, message: 'Запускаю ' + args.name } : { ok: false, message: 'Не нашёл' };
+        return /^(несуществующая штука|мой проект)$/.test(args.name) ? { ok: false, message: 'Не нашёл' } : { ok: true, message: 'Запускаю ' + args.name };
+      }
+      if (name === 'diskInfo') return { ok: true, disks: [{ name: 'C:', freeGB: 120.5, totalGB: 500 }] };
       return { ok: true, message: 'ok' };
     },
     update: { check: async () => {} },
+    ai: { runTool: async (name, input) => { toolRuns.push({ name, input }); return { ok: true }; } },
   },
-  settings: () => ({ userName: '', system: { city: 'Москва' } }),
+  settings: () => ({ userName: '', system: { city: 'Москва' }, learning: { autoLearn: true } }),
   saveSettings: async () => {},
   hasAI: () => true,
-  ui: { openHelp() {}, openSettings() {}, clearLog() {}, stopSpeaking() {}, lastAnswer: () => 'x', hideWindow() {}, maximize() {}, setEars() {}, confirm: async () => true },
+  ui: { openHelp() {}, openSettings() {}, clearLog() {}, stopSpeaking() {}, lastAnswer: () => 'x', hideWindow() {}, maximize() {}, setEars() {}, confirm: async () => true, voice: async (a) => 'voice:' + a },
+  learning: { list: () => learnedStore, save: async (l) => { learnedStore = l; } },
+  facts: { list: () => factsStore, add: async (t) => factsStore.push({ text: t }), clear: async () => { factsStore = []; } },
+  ai: async () => ({ ok: true, text: 'ии' }),
   timers: { add: (s, l) => timers.push({ s, l }), clear: () => 0, list: () => [] },
   notes: { add: async (t) => notes.push(t), list: () => notes.map((text) => ({ text })), clear: async () => {} },
 };
@@ -93,3 +104,86 @@ await expectSay('сколько будет 2 плюс 3 умножить на 4'
 await expectSay('посчитай скобка открывается 2 плюс 3 скобка закрывается умножить на 4', /20/);
 await expectSay('сколько будет 2 в 10 степени', /1.?024/);
 console.log('✓ калькулятор');
+
+// ── понимание с полуслова ──
+await expectAction('можешь открыть ютуб пожалуйста', 'openUrl', (a) => a.url.includes('youtube'));
+await expectAction('слушай а открой-ка ютуб', 'openUrl', (a) => a.url.includes('youtube'));
+await expectAction('ютуб открой', 'openUrl', (a) => a.url.includes('youtube'));
+await expectAction('ютуб', 'openUrl', (a) => a.url.includes('youtube'));
+await expectAction('телеграм', 'openApp', (a) => a.name === 'телеграм' && a.strict);
+await expectAction('я хочу послушать музыку', 'media', (a) => a.action === 'playpause');
+await expectAction('звук побольше', 'volume', (a) => a.action === 'up');
+await expectAction('сделай звук потише', 'volume', (a) => a.action === 'down');
+await expectAction('трек другой', 'media', (a) => a.action === 'next');
+await expectAction('отключи звук', 'volume', (a) => a.action === 'mute');
+await expectAction('экран сфоткай', 'screenshot');
+calls.length = 0;
+let r0 = await cmd.handle('да');
+assert.ok(!calls.some((c) => c.name === 'openApp'), '«да» не должно запускать программу');
+
+// ── контекст ──
+await expectAction('громче', 'volume', (a) => a.action === 'up');
+await expectAction('еще', 'volume', (a) => a.action === 'up');
+await expectAction('еще тише', 'volume', (a) => a.action === 'down');
+
+// ── новые команды ──
+await expectAction('новая вкладка', 'keys', (a) => a.combo === 'ctrl+t');
+await expectAction('закрой вкладку', 'keys', (a) => a.combo === 'ctrl+w');
+await expectAction('прокрути вниз', 'keys', (a) => a.combo === 'pagedown');
+await expectAction('нажми энтер 3 раза', 'keys', (a) => a.combo === 'enter' && a.times === 3);
+await expectAction('нажми контрол шифт т', 'keys', (a) => a.combo === 'ctrl+shift+t');
+await expectAction('обнови страницу', 'keys', (a) => a.combo === 'f5');
+await expectAction('сверни окно', 'activeWindow', (a) => a.action === 'minimize');
+await expectAction('сделай ярче на 30', 'brightness', (a) => a.action === 'up' && a.amount === 30);
+await expectAction('яркость 70', 'brightness', (a) => a.action === 'set' && a.amount === 70);
+await expectAction('найди файл договор', 'openFile', (a) => a.query === 'договор' && a.reveal);
+await expectAction('создай папку проекты на рабочем столе', 'createItem', (a) => a.kind === 'folder' && a.name === 'проекты');
+await expectAction('открой настройки звука', 'settingsPage', (a) => a.what === 'звука');
+await expectAction('сгенерируй пароль из 20 символов', 'copyText', (a) => a.text.length === 20);
+await expectSay('сколько места на диске', /свободно 120,5 из 500/);
+await expectSay('который час в токио', /^В Токио сейчас \d+:\d\d/);
+await expectSay('сколько дней до нового года', /^До нового года \d+/);
+await expectSay('выбери пиццу или суши', /(пиццу|суши)/);
+await expectSay('запусти секундомер', /запущен/);
+await expectSay('говори быстрее', /voice:быстрее/);
+await expectSay('смени голос', /voice:next/);
+
+// ── обучение ──
+await expectSay('когда я говорю рабочий режим открой телеграм и открой почту', /рабочий режим/);
+assert.deepEqual(learnedStore.at(-1).commands, ['открой телеграм', 'открой почту']);
+await expectAction('рабочий режим', 'openUrl', (a) => a.url.includes('mail.google.com'));
+await expectSay('научись: кино — открой кинопоиск, громкость 30', /кино/);
+assert.deepEqual(learnedStore.at(-1).commands, ['открой кинопоиск', 'громкость 30']);
+await expectAction('кино', 'volume', (a) => a.action === 'set' && a.amount === 30);
+await expectSay('забудь команду кино', /Забыл/);
+assert.ok(!learnedStore.some((e) => e.phrase === 'кино'));
+
+// Самообучение на действиях ИИ
+const note = await cmd.afterAI('открой мой проект', { ok: true, text: 'Открываю проект', actions: [{ name: 'open_path', input: { path: 'D:/proj' }, ok: true }] });
+assert.match(note, /Выучил/);
+toolRuns.length = 0;
+const lr = await cmd.handle('открой мой проект');
+assert.ok(lr.handled && lr.learned && toolRuns[0]?.name === 'open_path', 'выученное действие ИИ не повторилось');
+// Похожая фраза тоже срабатывает
+toolRuns.length = 0;
+await cmd.handle('открой мои проект');
+assert.equal(toolRuns[0]?.name, 'open_path');
+// Опасные команды не запоминаются
+assert.equal(await cmd.afterAI('удали всё', { ok: true, text: 'ok', actions: [{ name: 'run_command', input: {}, ok: true }] }), null);
+
+// Исправление «не то»
+await cmd.handle('открой несуществующая штука');
+await expectSay('не то', /Что нужно было сделать/);
+await expectAction('открой ютуб', 'openUrl');
+assert.equal(learnedStore.at(-1).phrase, 'открой несуществующая штука');
+await expectAction('открой несуществующая штука', 'openUrl', (a) => a.url.includes('youtube'));
+
+// Факты о пользователе
+await expectSay('запомни обо мне я люблю рок', /Запомнил/);
+assert.equal(factsStore.at(-1).text, 'Я люблю рок');
+await expectSay('что ты знаешь обо мне', /люблю рок/);
+
+console.log('✓ понимание, контекст, обучение и новые команды');
+await expectSay('когда я говорю вечер открой ютуб, открой почту и громкость 30', /вечер/);
+assert.deepEqual(learnedStore.at(-1).commands, ['открой ютуб', 'открой почту', 'громкость 30']);
+console.log('✓ разбор нескольких действий');

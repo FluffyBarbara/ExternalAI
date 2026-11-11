@@ -108,6 +108,7 @@
         </div>
       </div>
 
+      <div class="core-bottom" id="coreBottom">
       <div class="transcript" id="transcript"><span class="placeholder">Скажите «Джарвис» и команду</span></div>
 
       <div class="controls">
@@ -125,6 +126,23 @@
         </button>
       </div>
       <div class="hint" id="hint">Ключевое слово — <b>«Джарвис»</b> · кнопка — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd></div>
+
+      <!-- Загрузка модели речи: занимает то же место, что и нижняя часть, — ничего не прыгает -->
+      <div class="setup-card hud" id="setupCard" aria-live="polite">
+        <div class="setup-head">
+          <span class="setup-title" id="setupTitle">Загружаю модель распознавания речи</span>
+          <span class="setup-pct mono" id="setupPct">0%</span>
+        </div>
+        <div class="progress"><i id="setupBar"></i></div>
+        <div class="setup-status mono" id="setupStatus">Подключение…</div>
+        <div class="setup-note" id="setupNote">Один раз, около 45 МБ. Пока идёт загрузка, можно писать команды в поле справа.</div>
+        <div class="setup-actions" id="setupActions">
+          <button class="btn btn-sm" id="setupImport">Выбрать файл…</button>
+          <button class="btn btn-sm btn-primary" id="setupRetry">Повторить</button>
+          <button class="btn btn-sm btn-ghost" id="setupSkip">Только текст</button>
+        </div>
+      </div>
+      </div>
     </section>
 
     <!-- ─────────── Правая панель ─────────── -->
@@ -140,22 +158,6 @@
       </section>
     </aside>
   </main>
-
-  <!-- ─────────── Первый запуск: загрузка модели ─────────── -->
-  <div class="overlay hidden" id="onboarding">
-    <div class="modal modal-onboard hud">
-      <div class="onboard-logo"><canvas id="onboardReactor" width="160" height="160"></canvas></div>
-      <h2>Добро пожаловать в ExternalAI</h2>
-      <p class="muted">Для распознавания русской речи без интернета нужна голосовая модель (~45 МБ). Она скачается один раз.</p>
-      <div class="progress"><i id="onboardBar"></i></div>
-      <div class="mono dim" id="onboardStatus">Ожидание…</div>
-      <div class="modal-actions">
-        <button class="btn" id="onboardImport">Выбрать файл модели…</button>
-        <button class="btn btn-primary" id="onboardRetry">Скачать</button>
-        <button class="btn btn-ghost" id="onboardSkip">Пропустить (только текст)</button>
-      </div>
-    </div>
-  </div>
 
   <!-- ─────────── Подтверждение ─────────── -->
   <div class="overlay hidden" id="confirm">
@@ -195,6 +197,7 @@
         <nav class="tabs" id="tabs">
           <button class="tab active" data-tab="voice">Голос</button>
           <button class="tab" data-tab="ai">Искусственный интеллект</button>
+          <button class="tab" data-tab="learning">Обучение</button>
           <button class="tab" data-tab="system">Система</button>
           <button class="tab" data-tab="updates">Обновления</button>
           <button class="tab" data-tab="about">О программе</button>
@@ -252,6 +255,29 @@
             <label class="row col"><span>Адрес API (необязательно, для прокси)</span><input type="text" data-key="ai.baseURL" placeholder="https://api.anthropic.com" /></label>
             <label class="row col"><span>Ваше имя</span><input type="text" data-key="userName" placeholder="Как к вам обращаться" /></label>
             <label class="row col"><span>Дополнительные указания для ИИ</span><textarea rows="3" data-key="ai.persona" placeholder="Например: отвечай с юмором, называй меня «босс»"></textarea></label>
+          </section>
+
+          <section class="tab-panel" data-panel="learning">
+            <h4>Самообучение</h4>
+            <label class="row"><span>Запоминать действия ИИ и повторять их мгновенно без ИИ</span><input type="checkbox" class="switch" data-key="learning.autoLearn" /></label>
+            <p class="note">Своя команда голосом: «когда я говорю „рабочий режим“, открой телеграм, открой почту и громкость 30». Если я понял неправильно — скажите «не то», а затем что нужно было сделать: я запомню.</p>
+
+            <h4>Научить команде</h4>
+            <div class="teach">
+              <input type="text" id="teachPhrase" placeholder="Фраза: рабочий режим" />
+              <input type="text" id="teachActions" placeholder="Действия через запятую: открой телеграм, открой почту, громкость 30" />
+              <button class="btn btn-sm btn-primary" id="teachAdd">Добавить</button>
+            </div>
+
+            <h4>Выученные команды <span class="mono dim" id="learnedCount"></span></h4>
+            <ul class="learn-list" id="learnedList"></ul>
+
+            <h4>Что я знаю о вас</h4>
+            <ul class="learn-list" id="factsList"></ul>
+            <div class="teach teach-one">
+              <input type="text" id="factInput" placeholder="Например: я работаю дизайнером, проекты лежат в D:\Work" />
+              <button class="btn btn-sm" id="factAdd">Запомнить</button>
+            </div>
           </section>
 
           <section class="tab-panel" data-panel="system">

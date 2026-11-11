@@ -210,6 +210,7 @@ function closeModal(id) {
 
 function openSettings(tab) {
   bindSettingsForm();
+  renderLearning();
   fillVoices();
   refreshModelState();
   if (tab) selectTab(tab);
@@ -229,8 +230,9 @@ const commands = createCommands({
   hasAI: () => !!settings.ai.apiKey,
   ui: {
     openHelp: () => openHelp(),
-    openSettings: () => openSettings(),
+    openSettings: (tab) => openSettings(tab),
     clearLog: () => clearDialog(),
+    voice: (action) => voiceControl(action),
     stopSpeaking: () => speaker.stop(),
     lastAnswer: () => state.lastAnswer,
     hideWindow: () => ext.win.hide(),
@@ -248,7 +250,41 @@ const commands = createCommands({
     list: () => settings.notes || [],
     clear: async () => { await saveSettings({ notes: [] }); renderNotes(); },
   },
+  learning: {
+    list: () => settings.learned || [],
+    save: async (list) => { await saveSettings({ learned: list }); renderLearning(); },
+  },
+  facts: {
+    list: () => settings.facts || [],
+    add: async (text) => { await saveSettings({ facts: [...(settings.facts || []), { text, at: Date.now() }].slice(-200) }); renderLearning(); },
+    clear: async () => { await saveSettings({ facts: [] }); renderLearning(); },
+  },
+  // Для своих команд, которые встроенные правила не понимают.
+  ai: async (text) => {
+    if (!settings.ai.apiKey) return null;
+    const res = await ext.ai.ask(text);
+    const note = await commands.afterAI(text, res);
+    if (note) logMsg('sys', '⚡ ' + note, 'ok');
+    return res;
+  },
 });
+
+// Управление голосом ассистента командами.
+async function voiceControl(action) {
+  const v = settings.voice;
+  if (action === 'быстрее') { await saveSettings({ voice: { ttsRate: Math.min(1.6, +(v.ttsRate + 0.15).toFixed(2)) } }); return 'Говорю быстрее.'; }
+  if (action === 'медленнее') { await saveSettings({ voice: { ttsRate: Math.max(0.6, +(v.ttsRate - 0.15).toFixed(2)) } }); return 'Говорю медленнее.'; }
+  if (action === 'громче') { await saveSettings({ voice: { ttsVolume: Math.min(1, +(v.ttsVolume + 0.2).toFixed(2)) } }); return 'Говорю громче.'; }
+  if (action === 'тише') { await saveSettings({ voice: { ttsVolume: Math.max(0.2, +(v.ttsVolume - 0.2).toFixed(2)) } }); return 'Говорю тише.'; }
+  if (action === 'off') { await saveSettings({ voice: { ttsEnabled: false } }); return 'Хорошо, буду отвечать только текстом.'; }
+  if (action === 'on') { await saveSettings({ voice: { ttsEnabled: true } }); return 'Голос включён.'; }
+  const list = speaker.ruVoices().length ? speaker.ruVoices() : speaker.voices;
+  if (list.length < 2) return 'Другого голоса в системе нет. Русские голоса добавляются в настройках Windows: Время и язык, Речь.';
+  const current = speaker.pickVoice();
+  const next = list[(list.indexOf(current) + 1) % list.length];
+  await saveSettings({ voice: { ttsVoice: next.voiceURI } });
+  return `Теперь я говорю голосом ${next.name.replace(/Microsoft |Google /, '').split(' - ')[0]}.`;
+}
 
 async function clearDialog() {
   $('log').innerHTML = '';
@@ -273,6 +309,7 @@ async function processCommand(text, { voice = false } = {}) {
     const r = await commands.handle(text);
     if (r.handled) {
       if (r.silent) { state.mode = 'idle'; idleCore(); return; }
+      if (r.learned) logMsg('sys', '⚡ выученная команда', 'ok');
       answer = r.say;
       Sounds.done();
     } else if (settings.ai.apiKey) {
@@ -283,6 +320,8 @@ async function processCommand(text, { voice = false } = {}) {
       answer = res.text;
       isError = !res.ok;
       if (isError) Sounds.error(); else Sounds.done();
+      const note = await commands.afterAI(text, res);
+      if (note) logMsg('sys', '⚡ ' + note, 'ok');
     } else {
       const q = r.text || normalize(text);
       await ext.action('openUrl', { url: `https://www.google.com/search?q=${encodeURIComponent(q)}` });
@@ -457,9 +496,10 @@ ext.onRpc(async (method, payload) => {
     addTimer(payload.seconds, payload.label || 'Таймер');
     return { ok: true, message: `Таймер на ${formatDuration(payload.seconds)} запущен` };
   }
-  if (method === 'notesChanged') {
+  if (method === 'notesChanged' || method === 'memoryChanged') {
     settings = await ext.settings.get();
     renderNotes();
+    renderLearning();
     return { ok: true };
   }
   return null;
@@ -580,6 +620,65 @@ function renderNotes() {
   }
 }
 $('notesClear').onclick = async () => { await saveSettings({ notes: [] }); renderNotes(); };
+
+// ───────────────────────── обучение ─────────────────────────
+const TOOL_SHORT = {
+  open_url: (i) => `сайт ${String(i.url || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)}`, open_app: (i) => `запуск ${i.name}`,
+  close_app: (i) => `закрыть ${i.name}`, open_path: (i) => `открыть ${i.path}`, set_volume: (i) => `громкость ${i.action}${i.amount ? ' ' + i.amount : ''}`,
+  media_control: (i) => `медиа ${i.action}`, take_screenshot: () => 'скриншот', press_keys: (i) => `клавиши ${i.combo}`,
+  window_control: (i) => `окно ${i.action}`, set_brightness: (i) => `яркость ${i.action}`, open_settings_page: (i) => `настройки ${i.what}`,
+  set_timer: (i) => `таймер ${i.seconds} с`, create_item: (i) => `создать ${i.name}`,
+};
+
+function renderLearning() {
+  const list = $('learnedList');
+  if (!list) return;
+  const learned = (settings.learned || []).slice().reverse();
+  $('learnedCount').textContent = learned.length ? `· ${learned.length}` : '';
+  list.innerHTML = '';
+  if (!learned.length) list.innerHTML = '<li class="empty">Пока пусто. Научите меня голосом или пользуйтесь ИИ — я запоминаю сам.</li>';
+  for (const e of learned) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="lk"></span><span class="lp"></span><span class="la"></span><button class="lx" title="Забыть">×</button>';
+    li.querySelector('.lk').textContent = e.kind === 'ai' ? 'ИИ' : 'своя';
+    li.querySelector('.lp').textContent = `«${e.phrase}»`;
+    const what = e.kind === 'alias' ? e.commands.join(' → ') : (e.steps || []).map((st) => (TOOL_SHORT[st.name] || (() => st.name))(st.input || {})).join(' → ');
+    li.querySelector('.la').textContent = `${what}${e.uses ? ` · ${e.uses}×` : ''}`;
+    li.querySelector('.la').title = what;
+    li.querySelector('.lx').onclick = async () => { await saveSettings({ learned: (settings.learned || []).filter((x) => x.id !== e.id) }); renderLearning(); };
+    list.appendChild(li);
+  }
+  const facts = $('factsList');
+  facts.innerHTML = '';
+  const fl = settings.facts || [];
+  if (!fl.length) facts.innerHTML = '<li class="empty">Скажите «запомни обо мне…» — или ИИ запомнит важное сам.</li>';
+  fl.forEach((f, idx) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="la"></span><button class="lx" title="Забыть">×</button>';
+    li.querySelector('.la').textContent = f.text;
+    li.querySelector('.la').title = f.text;
+    li.querySelector('.lx').onclick = async () => { await saveSettings({ facts: fl.filter((_, i) => i !== idx) }); renderLearning(); };
+    facts.appendChild(li);
+  });
+}
+
+$('teachAdd').onclick = async () => {
+  const phrase = $('teachPhrase').value.trim();
+  const actions = $('teachActions').value.trim();
+  if (!phrase || !actions) return toast('Заполните оба поля', 'Фразу и что нужно делать', 'err');
+  const r = await commands.handle(`когда я говорю ${phrase}: ${actions}`);
+  $('teachPhrase').value = '';
+  $('teachActions').value = '';
+  toast('Команда добавлена', r.say || '', 'ok');
+  renderLearning();
+};
+$('factAdd').onclick = async () => {
+  const text = $('factInput').value.trim();
+  if (!text) return;
+  await saveSettings({ facts: [...(settings.facts || []), { text, at: Date.now() }] });
+  $('factInput').value = '';
+  renderLearning();
+};
 
 // ───────────────────────── виджеты ─────────────────────────
 const WEEK = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -742,44 +841,70 @@ async function refreshModelState() {
   $('modelState').textContent = st.ready ? `${st.name} ✓` : 'не загружена';
 }
 
-function progressText(p) {
-  if (p.stage === 'download') {
-    const mb = (n) => (n / 1048576).toFixed(1);
-    return `Загрузка ${mb(p.received)}${p.total ? ' / ' + mb(p.total) : ''} МБ`;
-  }
-  return { extract: 'Распаковка…', pack: 'Подготовка модели…', done: 'Готово' }[p.stage] || '';
+// Карточка загрузки встроена в окно и имеет фиксированный размер — ничего не прыгает.
+function showSetup(on) {
+  $('coreBottom').classList.toggle('setup', on);
 }
+
+function setSetup({ pct, status, failed = false }) {
+  const card = $('setupCard');
+  card.classList.toggle('failed', failed);
+  $('setupNote').textContent = failed
+    ? 'Пока можно работать в текстовом режиме — поле справа.'
+    : 'Один раз, около 45 МБ. Пока идёт загрузка, можно писать команды в поле справа.';
+  if (pct !== undefined) {
+    $('setupBar').style.width = `${pct}%`;
+    $('setupPct').textContent = failed ? '—' : `${Math.round(pct)}%`;
+  }
+  if (status !== undefined) $('setupStatus').textContent = status;
+}
+
+const mb = (n) => (n / 1048576).toFixed(1).padStart(4, ' ');
+function progressText(p) {
+  if (p.stage === 'download') return `Скачано ${mb(p.received)}${p.total ? ` из ${mb(p.total)}` : ''} МБ`;
+  return { extract: 'Распаковка архива…', pack: 'Подготовка модели…', done: 'Готово' }[p.stage] || '';
+}
+
 ext.model.onProgress((p) => {
-  const pct = p.stage === 'download' ? p.percent * 0.85 : p.stage === 'extract' ? 88 : p.stage === 'pack' ? 94 : 100;
-  $('onboardBar').style.width = `${pct}%`;
-  $('onboardStatus').textContent = progressText(p);
-  setPill('pillModel', 'busy', progressText(p));
+  const pct = p.stage === 'download' ? (p.percent || 0) * 0.85 : p.stage === 'extract' ? 88 : p.stage === 'pack' ? 94 : 100;
+  setSetup({ pct, status: progressText(p) });
+  setPill('pillModel', 'busy', `Модель речи: ${Math.round(pct)}%`);
+  if (state.mode === 'nomodel') setCore('ЗАГРУЗКА', `модель речи ${Math.round(pct)}%`, 'boot');
 });
 
 async function downloadModel() {
-  $('onboardRetry').disabled = true;
-  $('onboardStatus').textContent = 'Подключение…';
+  showSetup(true);
+  state.mode = 'nomodel';
+  $('setupTitle').textContent = 'Загружаю модель распознавания речи';
+  setSetup({ pct: 0, status: 'Подключение…' });
+  setCore('ЗАГРУЗКА', 'модель речи', 'boot');
   const r = await ext.model.ensure();
-  $('onboardRetry').disabled = false;
   if (r.ok) {
-    closeModal('onboarding');
+    setSetup({ pct: 100, status: 'Готово, запускаю распознавание…' });
     await startVoice(true);
+    showSetup(false);
   } else {
-    $('onboardStatus').textContent = `Не удалось скачать: ${r.error}. Можно скачать модель вручную (vosk-model-small-ru-0.22.zip с alphacephei.com) и выбрать файл.`;
-    $('onboardRetry').textContent = 'Повторить';
+    $('setupTitle').textContent = 'Не удалось скачать модель речи';
+    setSetup({ pct: 100, failed: true, status: `${r.error}. Скачайте vosk-model-small-ru-0.22.zip с alphacephei.com и выберите файл.` });
     setPill('pillModel', 'err', 'Модель не загружена');
+    state.mode = 'idle';
+    idleCore();
   }
 }
 
 async function importModel() {
+  showSetup(true);
+  $('setupTitle').textContent = 'Устанавливаю модель из файла';
+  setSetup({ pct: 0, status: 'Выберите файл…' });
   const r = await ext.model.import();
   if (r?.ok) {
-    closeModal('onboarding');
     closeModal('settings');
-    toast('Модель установлена', 'Перезапускаю распознавание…', 'ok');
+    setSetup({ pct: 100, status: 'Модель установлена. Перезапускаю…' });
     setTimeout(() => ext.app.relaunch(), 800);
-  } else if (r && !r.canceled) {
-    toast('Не удалось импортировать', r.message || r.error || '', 'err');
+  } else {
+    if (!state.voiceReady && r?.canceled) setSetup({ pct: 0, failed: true, status: 'Файл не выбран.' });
+    else if (state.voiceReady) showSetup(false);
+    if (r && !r.canceled) toast('Не удалось импортировать', r.message || r.error || '', 'err');
   }
 }
 
@@ -821,11 +946,11 @@ $('btnTalk').onclick = talk;
 $('btnStop').onclick = () => { speaker.stop(); state.awakeUntil = 0; $('btnTalk').classList.remove('active'); Sounds.cancel(); if (state.mode !== 'busy') { state.mode = 'idle'; idleCore(); } };
 $('btnMute').onclick = () => setEars(!state.ears);
 $('logClear').onclick = clearDialog;
-$('onboardRetry').onclick = downloadModel;
-$('onboardImport').onclick = importModel;
-$('onboardSkip').onclick = () => {
+$('setupRetry').onclick = downloadModel;
+$('setupImport').onclick = importModel;
+$('setupSkip').onclick = () => {
   try { localStorage.setItem('skipModel', '1'); } catch { /* нет хранилища */ }
-  closeModal('onboarding');
+  showSetup(false);
   state.mode = 'idle';
   setPill('pillModel', 'warn', 'Голос отключён — только текст');
   idleCore();
@@ -836,7 +961,6 @@ $('modelRedownload').onclick = async () => {
   await ext.model.remove();
   closeModal('settings');
   try { localStorage.removeItem('skipModel'); } catch { /* нет хранилища */ }
-  openModal('onboarding');
   downloadModel();
 };
 $('voiceTest').onclick = () => speaker.speak('Добрый день, сэр. Все системы работают нормально.');
@@ -893,7 +1017,6 @@ document.addEventListener('keydown', (e) => {
 speaker.addEventListener('start', () => reactor.setState('speaking'));
 
 // ───────────────────────── мини-реакторы ─────────────────────────
-new Reactor($('onboardReactor'), { mini: true }).setState('listening');
 const aboutReactor = new Reactor($('aboutReactor'), { mini: true });
 aboutReactor.setState('idle');
 
@@ -921,8 +1044,6 @@ logMsg('bot', settings.ai.apiKey
     idleCore();
     setTranscript('');
   } else {
-    setCore('НАСТРОЙКА', 'первый запуск', 'boot');
-    openModal('onboarding');
     downloadModel();
   }
   if (settings.firstRun) saveSettings({ firstRun: false });
