@@ -1,7 +1,7 @@
 {
   "name": "externalai",
   "productName": "ExternalAI",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "ExternalAI — голосовой ИИ-ассистент в стиле J.A.R.V.I.S. на русском языке",
   "main": "src/main/boot.js",
   "author": {
