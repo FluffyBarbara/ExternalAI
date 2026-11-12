@@ -7,11 +7,14 @@ const actions = require('./actions');
 const ai = require('./ai');
 const model = require('./model');
 const updater = require('./updater');
+const hot = require('./hot');
 
-const ROOT = path.join(__dirname, '..', '..');
+// Корень кода: встроенный или скачанный горячим обновлением (см. boot.js).
+const BOOT = global.__externalai || { codeRoot: path.join(__dirname, '..', '..'), version: app.getVersion(), hot: false };
+const ROOT = BOOT.codeRoot;
 const RENDERER = path.join(ROOT, 'src', 'renderer');
 const SHARED = path.join(ROOT, 'src', 'shared');
-const ICON = path.join(ROOT, 'build', 'icon.png');
+const ICON = path.join(app.getAppPath(), 'build', 'icon.png');
 const DEV = process.argv.includes('--dev');
 
 let win = null;
@@ -41,6 +44,7 @@ function resolveAppPath(urlPath) {
   const clean = decodeURIComponent(urlPath).replace(/^\/+/, '');
   if (clean === 'vendor/vosk.js') return require.resolve('vosk-browser/dist/vosk.js');
   if (clean === 'model/ru.tar.gz') return model.modelFile();
+  if (clean === 'CHANGELOG.md') return path.join(ROOT, 'CHANGELOG.md');
   const base = clean.startsWith('shared/') ? SHARED : RENDERER;
   const rel = clean.startsWith('shared/') ? clean.slice(7) : clean || 'index.html';
   const full = path.normalize(path.join(base, rel));
@@ -86,6 +90,11 @@ function createWindow() {
   });
 
   win.loadURL('app://externalai/index.html');
+
+  // Интерфейс загрузился — значит, эта версия кода рабочая.
+  win.webContents.once('did-finish-load', () => setTimeout(() => {
+    try { hot.confirmBoot(); } catch (e) { console.warn('confirmBoot', e); }
+  }, 3000));
 
   win.once('ready-to-show', () => {
     const hidden = process.argv.includes('--hidden') || s.system.startHidden;
@@ -285,11 +294,14 @@ function registerIpc() {
 
   handle('update:check', () => updater.check());
   handle('update:download', () => updater.download());
-  handle('update:install', () => { updater.install(() => { quitting = true; }); return { ok: true }; });
+  handle('update:install', () => ({ ok: updater.install(() => { quitting = true; }) }));
   handle('update:state', () => updater.getState());
 
   handle('app:info', () => ({
-    version: app.getVersion(),
+    version: BOOT.version,
+    shellVersion: app.getVersion(),
+    hot: BOOT.hot,
+    rolledBack: (() => { try { return hot.wasRolledBack(); } catch { return false; } })(),
     platform: process.platform,
     electron: process.versions.electron,
     packaged: app.isPackaged,
@@ -298,6 +310,7 @@ function registerIpc() {
   handle('app:openExternal', (url) => (/^https?:\/\//.test(url) ? shell.openExternal(url) : null));
   handle('app:openUserData', () => shell.openPath(app.getPath('userData')));
   handle('app:warmup', () => { actions.buildAppIndex(); return { ok: true }; });
+  handle('app:catalog', () => actions.catalogCounts());
 
   ipcMain.on('win:minimize', () => win?.minimize());
   ipcMain.on('win:toggleMaximize', () => (win?.isMaximized() ? win.unmaximize() : win?.maximize()));

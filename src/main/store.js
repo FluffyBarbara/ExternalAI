@@ -38,7 +38,10 @@ const DEFAULTS = {
     autoCheck: true,
     autoDownload: true,
     allowPrerelease: false,
+    autoInstall: true,        // ставить обновление сразу после загрузки
+    justUpdatedFrom: '',
   },
+  lastSeenVersion: '',
   ui: {
     accent: '#22d3ee',
     reduceMotion: false,

@@ -225,6 +225,7 @@ function selectTab(name) {
 // ───────────────────────── команды ─────────────────────────
 const commands = createCommands({
   ext,
+  mainCounts: () => ext.app.catalog(),
   settings: () => settings,
   saveSettings,
   hasAI: () => !!settings.ai.apiKey,
@@ -778,7 +779,23 @@ loadWeather();
 setInterval(loadWeather, 30 * 60 * 1000);
 
 // ───────────────────────── справка ─────────────────────────
+async function renderHelpStats() {
+  const st = commands.stats(await ext.app.catalog().catch(() => ({})));
+  $('helpTotal').textContent = st.total.toLocaleString('ru-RU');
+  const box = $('helpStats');
+  box.innerHTML = '';
+  for (const [label, n] of st.rows.sort((a, b) => b[1] - a[1])) {
+    const chip = document.createElement('span');
+    chip.className = 'stat-chip';
+    chip.innerHTML = '<b></b><span></span>';
+    chip.querySelector('b').textContent = n.toLocaleString('ru-RU');
+    chip.querySelector('span').textContent = label;
+    box.appendChild(chip);
+  }
+}
+
 function openHelp() {
+  renderHelpStats();
   const grid = $('helpGrid');
   grid.innerHTML = '';
   const groups = commands.help();
@@ -803,37 +820,117 @@ function openHelp() {
 // ───────────────────────── обновления ─────────────────────────
 const UPD_TEXT = {
   idle: 'Обновления ещё не проверялись', checking: 'Проверяю обновления…', available: 'Доступна новая версия',
-  downloading: 'Скачиваю обновление…', ready: 'Обновление готово к установке', latest: 'У вас последняя версия',
+  downloading: 'Скачиваю обновление', ready: 'Обновление скачано', latest: 'У вас последняя версия',
   error: 'Ошибка обновления', dev: 'Режим разработки — обновления отключены',
 };
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  return `${(bytes / 1048576).toFixed(1)} МБ`;
+}
 let lastUpdateStatus = '';
+let updateCountdown = null;
 function renderUpdate(u) {
   if (!u) return;
   let text = UPD_TEXT[u.status] || u.status;
-  if (u.latest && ['available', 'downloading', 'ready'].includes(u.status)) text += `: v${u.latest}`;
+  if (u.latest && ['available', 'downloading', 'ready'].includes(u.status)) text += ` ${u.latest}`;
+  if (['downloading', 'ready'].includes(u.status) && u.sizeBytes) text += ` · ${fmtSize(u.sizeBytes)}${u.kind === 'hot' ? ' (только изменения)' : ''}`;
   if (u.status === 'downloading' && u.percent) text += ` — ${u.percent}%`;
   if (u.error && (u.status === 'error' || u.status === 'dev')) text += ` (${u.error})`;
   $('updStatus').textContent = text;
   $('updBar').style.width = `${u.status === 'ready' ? 100 : u.percent || 0}%`;
   $('updNotes').textContent = u.notes || '';
-  $('updDownload').classList.toggle('hidden', u.status !== 'available');
+  $('updDownload').classList.add('hidden');
   $('updInstall').classList.toggle('hidden', u.status !== 'ready');
   const pill = $('pillUpdate');
-  pill.classList.toggle('hidden', !['available', 'downloading', 'ready'].includes(u.status));
-  pill.querySelector('span').textContent = u.status === 'ready' ? `v${u.latest} готова` : u.status === 'downloading' ? `Загрузка ${u.percent || 0}%` : `Есть v${u.latest}`;
+  pill.classList.toggle('hidden', !['downloading', 'ready'].includes(u.status));
+  pill.querySelector('span').textContent = u.status === 'ready' ? `${u.latest} готова` : `Обновление ${u.percent || 0}%`;
   setPill('pillUpdate', u.status === 'ready' ? 'ok' : 'busy');
-  if (u.status === 'ready' && lastUpdateStatus !== 'ready') {
-    toast('Обновление готово', `Версия ${u.latest} установится при перезапуске.`, 'ok');
-    logMsg('sys', `Доступна версия ${u.latest} — нажмите «Обновление» вверху`, 'ok');
-  }
+  if (u.status === 'ready' && lastUpdateStatus !== 'ready') onUpdateReady(u);
   lastUpdateStatus = u.status;
+}
+
+// Обновление скачано: ставим сразу, как только ассистент свободен.
+function onUpdateReady(u) {
+  logMsg('sys', `Скачана версия ${u.latest}${u.sizeBytes ? ' · ' + fmtSize(u.sizeBytes) : ''}`, 'ok');
+  if (!settings.updates.autoInstall) {
+    toast('Обновление готово', `Версия ${u.latest} установится при следующем запуске.`, 'ok');
+    return;
+  }
+  const start = () => {
+    if (state.mode === 'busy' || state.mode === 'speaking' || state.confirm) return setTimeout(start, 3000);
+    let left = 5;
+    $('updBannerText').textContent = `Устанавливаю ExternalAI ${u.latest}`;
+    $('updBannerCount').textContent = left;
+    $('updBanner').classList.remove('hidden');
+    updateCountdown = setInterval(() => {
+      left -= 1;
+      $('updBannerCount').textContent = Math.max(0, left);
+      if (left <= 0) installNow();
+    }, 1000);
+  };
+  start();
+}
+function installNow() {
+  clearInterval(updateCountdown);
+  $('updBannerText').textContent = 'Перезапускаю…';
+  ext.update.install();
+}
+function postponeUpdate() {
+  clearInterval(updateCountdown);
+  $('updBanner').classList.add('hidden');
+  toast('Обновление отложено', 'Оно установится при следующем запуске.', '');
 }
 ext.update.onState(renderUpdate);
 ext.update.state().then(renderUpdate);
 $('updCheck').onclick = () => ext.update.check();
-$('updDownload').onclick = () => ext.update.download();
-$('updInstall').onclick = () => ext.update.install();
-$('pillUpdate').onclick = () => (lastUpdateStatus === 'ready' ? ext.update.install() : openSettings('updates'));
+$('updInstall').onclick = () => installNow();
+$('updNow').onclick = () => installNow();
+$('updLater').onclick = () => postponeUpdate();
+$('pillUpdate').onclick = () => (lastUpdateStatus === 'ready' ? installNow() : openSettings('updates'));
+
+// ───────────────────────── что нового ─────────────────────────
+function parseChangelog(text) {
+  const out = [];
+  let cur = null;
+  for (const line of text.split(/\r?\n/)) {
+    const h = line.match(/^##\s+\[?([\d.]+[^\]\s]*)\]?/);
+    if (h) { cur = { version: h[1], items: [] }; out.push(cur); continue; }
+    const li = line.match(/^\s*[-*]\s+(.+)$/);
+    if (cur && li) cur.items.push(li[1]);
+  }
+  return out;
+}
+const cmpVer = (a, b) => {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0) ? 1 : -1;
+  return 0;
+};
+
+async function showWhatsNew(fromVersion) {
+  let sections = [];
+  try { sections = parseChangelog(await (await fetch('CHANGELOG.md', { cache: 'no-store' })).text()); } catch { /* нет файла */ }
+  const relevant = sections.filter((x) => cmpVer(x.version, info.version) <= 0 && (!fromVersion || cmpVer(x.version, fromVersion) > 0));
+  const list = relevant.length ? relevant : sections.slice(0, 1);
+  if (!list.length) return;
+  $('wnTitle').textContent = `ExternalAI обновлён до версии ${info.version}`;
+  const body = $('wnBody');
+  body.innerHTML = '';
+  for (const sec of list) {
+    const h = document.createElement('h4');
+    h.textContent = `Версия ${sec.version}`;
+    const ul = document.createElement('ul');
+    for (const it of sec.items) {
+      const li = document.createElement('li');
+      li.textContent = it;
+      ul.appendChild(li);
+    }
+    body.append(h, ul);
+  }
+  openModal('whatsnew');
+}
+$('wnClose').onclick = () => closeModal('whatsnew');
+$('aboutWhatsNew').onclick = () => { closeModal('settings'); showWhatsNew(''); };
 
 // ───────────────────────── голосовая модель ─────────────────────────
 async function refreshModelState() {
@@ -1005,7 +1102,7 @@ ext.win.onState(({ maximized }) => { $('winMax').title = maximized ? 'Восст
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (state.confirm) return state.confirm.resolve(false);
-    const open = ['help', 'settings'].find((id) => !$(id).classList.contains('hidden'));
+    const open = ['help', 'settings', 'whatsnew'].find((id) => !$(id).classList.contains('hidden'));
     if (open) return closeModal(open);
     speaker.stop();
   }
@@ -1022,7 +1119,7 @@ aboutReactor.setState('idle');
 
 // ───────────────────────── запуск ─────────────────────────
 $('appVersion').textContent = `v${info.version}`;
-$('aboutVersion').textContent = `Версия ${info.version} · Electron ${info.electron} · ${info.platform}`;
+$('aboutVersion').textContent = `Версия ${info.version}${info.hot ? ` (основа ${info.shellVersion})` : ''} · Electron ${info.electron} · ${info.platform}`;
 applySettings();
 renderTimers();
 renderNotes();
@@ -1047,4 +1144,12 @@ logMsg('bot', settings.ai.apiKey
     downloadModel();
   }
   if (settings.firstRun) saveSettings({ firstRun: false });
+
+  const seen = settings.lastSeenVersion;
+  if (info.rolledBack) toast('Обновление откатено', 'Новая версия не запустилась, я вернулся к предыдущей.', 'err');
+  if (seen && seen !== info.version) {
+    setTimeout(() => showWhatsNew(settings.updates.justUpdatedFrom || seen), 900);
+    logMsg('sys', `Обновлено до версии ${info.version}`, 'ok');
+  }
+  if (seen !== info.version) saveSettings({ lastSeenVersion: info.version, updates: { justUpdatedFrom: '' } });
 })();

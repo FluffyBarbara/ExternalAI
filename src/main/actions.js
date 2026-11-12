@@ -716,7 +716,12 @@ async function openSettingsPage(what) {
   return ok('Открываю настройки');
 }
 
+function catalogCounts() {
+  return { apps: Object.keys(APP_ALIASES).length + Object.keys(WIN_BUILTIN).length, settings: SETTINGS_PAGES.length };
+}
+
 module.exports = {
+  catalogCounts,
   openUrl, openPath, openApp, closeApp, volume, media, power, screenshot, typeText, copyText, readClipboard,
   minimizeAll, runShell, systemInfo, notify, buildAppIndex, pressKeys, activeWindow, selectedText, brightness,
   diskInfo, findFiles, openFile, createItem, lastScreenshot, emptyTrash, openSettingsPage, IS_WIN, IS_MAC,

@@ -182,6 +182,8 @@
         <button class="icon-btn close-modal" data-close="help"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
       </header>
       <p class="muted">Сначала скажите ключевое слово («Джарвис»), затем команду — можно одной фразой: «Джарвис, открой ютуб». Всё, чего нет в списке, выполнит ИИ, если он подключён.</p>
+      <div class="help-total"><span class="help-total-n" id="helpTotal">—</span><span>команд знает ExternalAI — и учится новым</span></div>
+      <div class="help-stats" id="helpStats"></div>
       <div class="help-grid" id="helpGrid"></div>
     </div>
   </div>
@@ -306,8 +308,8 @@
               </div>
             </div>
             <label class="row"><span>Проверять обновления автоматически</span><input type="checkbox" class="switch" data-key="updates.autoCheck" /></label>
-            <label class="row"><span>Скачивать обновления сразу</span><input type="checkbox" class="switch" data-key="updates.autoDownload" /></label>
-            <label class="row"><span>Получать бета-версии</span><input type="checkbox" class="switch" data-key="updates.allowPrerelease" /></label>
+            <label class="row"><span>Устанавливать сразу после загрузки (с перезапуском)</span><input type="checkbox" class="switch" data-key="updates.autoInstall" /></label>
+            <p class="note">Обычно скачиваются только изменённые файлы — десятки килобайт. Полный пакет нужен, только если поменялся движок приложения. Если новая версия не запустится, ExternalAI сам вернётся к предыдущей.</p>
           </section>
 
           <section class="tab-panel" data-panel="about">
@@ -319,6 +321,7 @@
               <div class="row-actions center">
                 <button class="btn" data-href="https://github.com/FluffyBarbara/ExternalAI">GitHub</button>
                 <button class="btn" data-href="https://github.com/FluffyBarbara/ExternalAI/releases">Релизы</button>
+                <button class="btn" id="aboutWhatsNew">Что нового</button>
                 <button class="btn" id="openUserData">Папка данных</button>
               </div>
             </div>
@@ -326,6 +329,24 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ─────────── Что нового ─────────── -->
+  <div class="overlay hidden" id="whatsnew">
+    <div class="modal modal-whatsnew hud">
+      <div class="wn-badge">НОВОЕ</div>
+      <h2 id="wnTitle">Что нового</h2>
+      <div class="wn-body" id="wnBody"></div>
+      <div class="modal-actions"><button class="btn btn-primary" id="wnClose">Отлично</button></div>
+    </div>
+  </div>
+
+  <!-- ─────────── Установка обновления ─────────── -->
+  <div class="upd-banner hidden" id="updBanner">
+    <span class="upd-count mono" id="updBannerCount">5</span>
+    <span id="updBannerText">Устанавливаю обновление</span>
+    <button class="btn btn-sm btn-primary" id="updNow">Сейчас</button>
+    <button class="btn btn-sm btn-ghost" id="updLater">Позже</button>
   </div>
 
   <div class="toasts" id="toasts"></div>

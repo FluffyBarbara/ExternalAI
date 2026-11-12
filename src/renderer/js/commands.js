@@ -1,5 +1,6 @@
 // Движок русских голосовых команд. Всё, что не распознано здесь, уходит в ИИ.
 import { cleanCommand, guessIntent, phraseSimilarity, parseTeach, canonVerb, VERBS } from './nlu.js';
+import { catalogRules, catalogStats } from './catalog.js';
 
 const { normalize, translit } = window.TextUtils;
 export { cleanCommand };
@@ -551,12 +552,12 @@ export function createCommands(ctx) {
       if (m[2].startsWith('дн')) d.setDate(d.getDate() + +m[1]);
       else if (m[2].startsWith('недел')) d.setDate(d.getDate() + 7 * m[1]);
       else d.setMonth(d.getMonth() + +m[1]);
-      return `Это будет ${WEEKDAYS[d.getDay()]}, ${d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}.`;
+      return `Это будет ${WEEKDAYS[d.getDay()]}, ${d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/ г\.$/, ' года')}.`;
     });
-  add('Время', ['какое сегодня число', 'какой день недели'], (t) => /(какое (сегодня )?число|какая (сегодня )?дата|какой (сегодня )?день|день недели|сегодняшняя дата|^число$)/.test(t),
+  add('Время', ['какое сегодня число', 'какой день недели'], (t) => !/\d/.test(t) && /(какое (сегодня )?число|какая (сегодня )?дата|какой (сегодня )?день|день недели|сегодняшняя дата|^число$)/.test(t),
     () => {
       const d = new Date();
-      return `Сегодня ${WEEKDAYS[d.getDay()]}, ${d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}.`;
+      return `Сегодня ${WEEKDAYS[d.getDay()]}, ${d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/ г\.$/, ' года')}.`;
     });
   add('Время', ['сколько дней до нового года'], (t) => t.match(/сколько (?:осталось )?(?:дней )?до (нового года|лета|зимы|весны|осени|выходных|пятницы|субботы|воскресенья|понедельника)/),
     (m) => {
@@ -734,6 +735,7 @@ export function createCommands(ctx) {
       return c ? { amount: +conv[1], code: c[1], name: c[2] } : null;
     }
     if (!/(курс|почем|сколько стоит|сколько сейчас|по чем)/.test(t)) return null;
+    if (/\s(к|в|во|на)\s(?!рубл)[а-я]/.test(t)) return null; // пара валют — в каталоге
     const c = CURRENCIES.find(([re]) => re.test(t));
     return c ? { amount: 0, code: c[1], name: c[2] } : null;
   }, async ({ amount, code, name }) => {
@@ -763,6 +765,18 @@ export function createCommands(ctx) {
         await fetch('https://www.google.com/generate_204', { mode: 'no-cors', cache: 'no-store' });
         return `Интернет работает, отклик ${Math.round(performance.now() - started)} миллисекунд.`;
       } catch { return 'Интернета нет.'; }
+    });
+
+  // ═════════════ большой каталог ═════════════
+  const CATALOG_RULES = catalogRules(ctx);
+  for (const r of CATALOG_RULES) add(r.group, r.examples, r.match, r.run);
+
+  // ═════════════ сколько команд ═════════════
+  add('Ассистент', ['сколько команд ты знаешь'], (t) => /^(сколько (команд|всего команд) ты (знаешь|умеешь)|сколько у тебя команд)$/.test(t),
+    async () => {
+      const st = stats(await ctx.mainCounts?.());
+      ctx.ui.openHelp();
+      return `Я знаю ${st.total.toLocaleString('ru-RU')} ${plural(st.total, 'команду', 'команды', 'команд')}, и это число растёт: я учусь на ваших командах.`;
     });
 
   // ═════════════ калькулятор ═════════════
@@ -1033,7 +1047,21 @@ export function createCommands(ctx) {
     return groups;
   }
 
-  return { handle, help, afterAI, memory };
+  /** Сколько всего команд: каталог + встроенные правила + программы и настройки Windows + выученное. */
+  function stats(mainCounts = {}) {
+    const extra = {
+      'Встроенные команды': C.length - CATALOG_RULES.length,
+      'Горячие клавиши': KEYMAP.length,
+      'Сайты (быстрый список)': Object.keys(SITES).length,
+    };
+    if (mainCounts.apps) extra['Программы и системные утилиты'] = mainCounts.apps;
+    if (mainCounts.settings) extra['Разделы настроек Windows'] = mainCounts.settings;
+    const own = learned().length;
+    if (own) extra['Выученные и свои команды'] = own;
+    return catalogStats(extra);
+  }
+
+  return { handle, help, afterAI, memory, stats };
 }
 
 const cap = (s) => String(s).replace(/^./, (c) => c.toUpperCase());

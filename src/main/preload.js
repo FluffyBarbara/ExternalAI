@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('ext', {
     openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
     openUserData: () => ipcRenderer.invoke('app:openUserData'),
     warmup: () => ipcRenderer.invoke('app:warmup'),
+    catalog: () => ipcRenderer.invoke('app:catalog'),
     quit: () => ipcRenderer.send('app:quit'),
     relaunch: () => ipcRenderer.send('app:relaunch'),
   },
